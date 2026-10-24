@@ -29,10 +29,12 @@
 
 ---
 
-## 三、 目录结构说明
+## 三、 双自动化工作流与目录结构
 
-- [`.github/workflows/build.yml`](file:///c:/Users/thepz/OneDrive/Documents/VScode/openwrt/.github/workflows/build.yml)：GitHub Actions 自动巡检上游最新 `v25.12.*` 正式版、并发编译及发布 OTA 流水线。
-- [`scripts/diy.sh`](file:///c:/Users/thepz/OneDrive/Documents/VScode/openwrt/scripts/diy.sh)：编译前源码定制脚本（优先拉取上游最新插件 + 本地 `packages/` 兜底防删库）。
-- [`files/etc/uci-defaults/99-custom-settings`](file:///c:/Users/thepz/OneDrive/Documents/VScode/openwrt/files/etc/uci-defaults/99-custom-settings)：首次开机自动执行的固化配置与 `/opt` 自动分区恢复脚本。
-- [`configs/`](file:///c:/Users/thepz/OneDrive/Documents/VScode/openwrt/configs)：[`x86_64.config`](file:///c:/Users/thepz/OneDrive/Documents/VScode/openwrt/configs/x86_64.config)、[`nanopi-r5s.config`](file:///c:/Users/thepz/OneDrive/Documents/VScode/openwrt/configs/nanopi-r5s.config) 与共用插件配置 [`common.config`](file:///c:/Users/thepz/OneDrive/Documents/VScode/openwrt/configs/common.config)。
-- [`packages/`](file:///c:/Users/thepz/OneDrive/Documents/VScode/openwrt/packages)：本地内嵌的轻量插件兜底备份（`luci-app-ota`、`luci-app-netspeedtest`、`luci-app-tailscale`、`luci-app-socat` 等）。
+1. **[`.github/workflows/sync-packages.yml`](file:///c:/Users/thepz/OneDrive/Documents/VScode/openwrt/.github/workflows/sync-packages.yml)**（自动化 1：每日同步第三方插件）：
+   - 每天北京时间 03:00 自动检查非 ImmortalWrt 官方源的外部插件（`quickfile`、`mosdns`、`v2ray-geodata`、`nikki`、`luci-app-tailscale`、`luci-app-ota`、`luci-app-netspeedtest`、`luci-app-socat`）是否有更新，有更新则自动同步提交至本仓库 [`packages/`](file:///c:/Users/thepz/OneDrive/Documents/VScode/openwrt/packages) 目录（若上游删库则自动跳过并保留本仓库已有代码）。
+2. **[`.github/workflows/build.yml`](file:///c:/Users/thepz/OneDrive/Documents/VScode/openwrt/.github/workflows/build.yml)**（自动化 2：追踪 ImmortalWrt 正式版并编译固件）：
+   - 每天北京时间 04:00 自动巡检上游 `ImmortalWrt` 最新 `v25.12.*` 正式版 Tag；有新版本（或手动点击触发）时并发编译 `x86_64` 与 `NanoPi R5S` 固件并发布 OTA。
+3. **[`scripts/diy.sh`](file:///c:/Users/thepz/OneDrive/Documents/VScode/openwrt/scripts/diy.sh)**：编译前源码定制脚本（官方源插件直接沿用并按需修改，第三方插件 100% 直接从本仓库 [`packages/`](file:///c:/Users/thepz/OneDrive/Documents/VScode/openwrt/packages) 读取，零外部克隆风险）。
+4. **[`files/etc/uci-defaults/99-custom-settings`](file:///c:/Users/thepz/OneDrive/Documents/VScode/openwrt/files/etc/uci-defaults/99-custom-settings)**：首次开机自动执行的固化配置与 `/opt` 自动分区恢复脚本。
+5. **[`configs/`](file:///c:/Users/thepz/OneDrive/Documents/VScode/openwrt/configs)**：[`x86_64.config`](file:///c:/Users/thepz/OneDrive/Documents/VScode/openwrt/configs/x86_64.config)、[`nanopi-r5s.config`](file:///c:/Users/thepz/OneDrive/Documents/VScode/openwrt/configs/nanopi-r5s.config) 与共用插件配置 [`common.config`](file:///c:/Users/thepz/OneDrive/Documents/VScode/openwrt/configs/common.config)。

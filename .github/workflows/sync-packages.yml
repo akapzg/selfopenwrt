@@ -1,0 +1,92 @@
+name: Sync Third-Party Packages
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 每天北京时间 03:00 (UTC 19:00) 自动巡检并同步第三方插件上游更新至本仓库 packages/ 目录
+    - cron: '0 19 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    name: Sync Upstream Plugins to packages/
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Pull Latest Upstream Plugins (Safe Sync with Delete Protection)
+        run: |
+          sudo timedatectl set-timezone 'Asia/Shanghai'
+          mkdir -p /tmp/upstream_sync
+
+          # 安全同步函数：仅当上游克隆成功且非空时才更新本地 packages/ 目录；若上游删库则自动跳过并保留本地备份
+          sync_repo() {
+            local repo_url="$1"
+            local branch="$2"
+            local target_name="$3"
+            local tmp_dir="/tmp/upstream_sync/${target_name}"
+
+            echo ">>> Checking upstream: ${repo_url} -> packages/${target_name}"
+            rm -rf "$tmp_dir"
+            if [ -n "$branch" ]; then
+              git clone --depth=1 -b "$branch" "$repo_url" "$tmp_dir" 2>/dev/null || {
+                echo "  [Skip] Upstream $repo_url ($branch) unreachable/deleted. Keeping existing packages/${target_name}."
+                return 0
+              }
+            else
+              git clone --depth=1 "$repo_url" "$tmp_dir" 2>/dev/null || {
+                echo "  [Skip] Upstream $repo_url unreachable/deleted. Keeping existing packages/${target_name}."
+                return 0
+              }
+            fi
+
+            rm -rf "$tmp_dir/.git"
+            if [ -n "$(ls -A "$tmp_dir" 2>/dev/null)" ]; then
+              rm -rf "packages/${target_name}"
+              cp -rf "$tmp_dir" "packages/${target_name}"
+              echo "  [OK] Updated packages/${target_name}"
+            fi
+          }
+
+          # 1. 同步独立第三方插件仓库
+          sync_repo "https://github.com/sbwml/luci-app-quickfile.git" "" "quickfile"
+          sync_repo "https://github.com/sbwml/luci-app-mosdns.git" "v5" "mosdns"
+          sync_repo "https://github.com/sbwml/v2ray-geodata.git" "" "v2ray-geodata"
+          sync_repo "https://github.com/nikkinikki-org/OpenWrt-nikki.git" "" "nikki"
+          sync_repo "https://github.com/asvow/luci-app-tailscale.git" "" "luci-app-tailscale"
+
+          # 2. 同步 sbwml/openwrt_pkgs 中的指定子包 (OTA / 网速测试 / Socat)
+          echo ">>> Checking upstream: https://github.com/sbwml/openwrt_pkgs.git (sparse)"
+          if git clone --depth=1 --filter=blob:none --sparse "https://github.com/sbwml/openwrt_pkgs.git" /tmp/upstream_sync/openwrt_pkgs 2>/dev/null; then
+            pushd /tmp/upstream_sync/openwrt_pkgs >/dev/null
+            git sparse-checkout set luci-app-ota otahelper luci-app-netspeedtest speedtest-cli luci-app-socat
+            popd >/dev/null
+            for pkg in luci-app-ota otahelper luci-app-netspeedtest speedtest-cli luci-app-socat; do
+              if [ -d "/tmp/upstream_sync/openwrt_pkgs/$pkg" ]; then
+                rm -rf "packages/$pkg"
+                cp -rf "/tmp/upstream_sync/openwrt_pkgs/$pkg" "packages/$pkg"
+                echo "  [OK] Updated packages/$pkg"
+              fi
+            done
+          else
+            echo "  [Skip] sbwml/openwrt_pkgs unreachable/deleted. Keeping existing local packages."
+          fi
+
+      - name: Commit & Push Updated Packages
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/
+          if git diff --cached --quiet; then
+            echo ">>> No upstream plugin changes detected today."
+          else
+            update_date=$(date '+%Y-%m-%d %H:%M')
+            git commit -m "chore(packages): sync upstream third-party plugins ($update_date)"
+            git push origin HEAD:main
+            echo ">>> Successfully synced and pushed updated plugins to packages/!"
+          fi
