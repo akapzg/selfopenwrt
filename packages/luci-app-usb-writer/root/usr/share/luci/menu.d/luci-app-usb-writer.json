@@ -1,0 +1,13 @@
+{
+	"admin/system/usb-writer": {
+		"title": "U\u76d8\u955c\u50cf\u70e7\u5f55",
+		"order": 68,
+		"action": {
+			"type": "view",
+			"path": "usb-writer"
+		},
+		"depends": {
+			"acl": [ "luci-app-usb-writer" ]
+		}
+	}
+}

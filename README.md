@@ -18,14 +18,14 @@
 
 ---
 
-## 二、 内置插件列表（共 31 项）
+## 二、 内置插件列表（共 32 项）
 
 - **代理与分流**：`HomeProxy`、`Nikki (mihomo-meta)`、`MosDNS v5`
 - **组网与内网穿透**：`Tailscale`（含 `luci-app-tailscale`）、`WireGuard`、`DDNS`、`Socat`、`UPnP`
 - **存储、文件与下载**：`Docker / DockerMan`、`DiskMan`、`QuickFile 文件管理`、`OpenList`、`Rclone`、`Samba4`、`qBittorrent`、`Aria2`（含 `AriaNg` 面板）
 - **影音与电视组播**：`AirPlay 2`（含 USB 声卡驱动）、`rtp2httpd`（IPTV 组播转单播）
 - **测速、扫描、监控与流控**：`FastNet 网络体检与测速（内置 HomeBox 内网测速）`、`局域网设备扫描 (LAN Scanner + arp-scan)`、`网速测试`（含 `iPerf3` + `Speedtest`）、`nlbwmon 带宽监控`、`SQM 队列管理`、`EQoS IP 限速`
-- **系统工具与升级**：`OTA 在线升级`、`TTY 终端`、`CPU 性能调节`、`LED 配置`、`自定义命令`、`网络唤醒 (WoL)`、`Watchcat`、`KMS 服务器`、`释放内存`、`定时重启`、`emmc-install`（R5S 专属刷写 eMMC 命令）
+- **系统工具与升级**：`OTA 在线升级`、`U盘镜像烧录 (USB Image Writer)`、`TTY 终端`、`CPU 性能调节`、`LED 配置`、`自定义命令`、`网络唤醒 (WoL)`、`Watchcat`、`KMS 服务器`、`释放内存`、`定时重启`、`emmc-install`（R5S 专属刷写 eMMC 命令）
 
 ---
 

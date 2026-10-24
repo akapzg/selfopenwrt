@@ -1,0 +1,21 @@
+{
+	"luci-app-usb-writer": {
+		"description": "Grant access to USB Disk Image Writer",
+		"read": {
+			"cgi-io": [ "upload" ],
+			"file": {
+				"/usr/libexec/usb-writer": [ "exec" ],
+				"/opt/downloads/*": [ "read", "list" ],
+				"/tmp/usb-writer/*": [ "read", "list" ]
+			}
+		},
+		"write": {
+			"cgi-io": [ "upload" ],
+			"file": {
+				"/usr/libexec/usb-writer": [ "exec" ],
+				"/opt/downloads/*": [ "write" ],
+				"/tmp/usb-writer/*": [ "write" ]
+			}
+		}
+	}
+}
