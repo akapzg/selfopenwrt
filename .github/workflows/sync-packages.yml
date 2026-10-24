@@ -58,6 +58,7 @@ jobs:
           sync_repo "https://github.com/sbwml/luci-app-mosdns.git" "v5" "mosdns"
           sync_repo "https://github.com/sbwml/v2ray-geodata.git" "" "v2ray-geodata"
           sync_repo "https://github.com/nikkinikki-org/OpenWrt-nikki.git" "" "nikki"
+          rm -rf packages/nikki/mihomo-alpha
           sync_repo "https://github.com/asvow/luci-app-tailscale.git" "" "luci-app-tailscale"
 
           # 2. 同步 sbwml/openwrt_pkgs 中的指定子包 (OTA / 网速测试 / Socat)

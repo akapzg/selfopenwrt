@@ -13,51 +13,80 @@ boot() {
 
 start() {
     # Skip if /opt is already a mounted partition
-    if mountpoint -q /opt 2>/dev/null; then
+    if grep -q " /opt " /proc/mounts 2>/dev/null; then
         mkdir -p /opt/docker
         return 0
     fi
 
-    # 1. Identify physical boot disk (supports sda / nvme0n1 / mmcblk0 / vda)
-    local root_dev=$(sed -n 's/.*root=\([^ ]*\).*/\1/p' /proc/cmdline)
+    # 1. Identify root/boot partition device (supports sda / nvme0n1 / mmcblk0 / vda)
+    local part_dev=""
+    local root_partuuid=$(sed -n 's/.*root=PARTUUID=\([^ ]*\).*/\1/p' /proc/cmdline)
+    if [ -n "$root_partuuid" ]; then
+        part_dev=$(blkid -t PARTUUID="$root_partuuid" -o device 2>/dev/null | head -n1)
+    fi
+    if [ -z "$part_dev" ]; then
+        local cmd_root=$(sed -n 's/.*root=\(\/dev\/[^ ]*\).*/\1/p' /proc/cmdline)
+        if [ -n "$cmd_root" ] && [ "$cmd_root" != "/dev/root" ] && [ -b "$cmd_root" ]; then
+            part_dev="$cmd_root"
+        fi
+    fi
+    if [ -z "$part_dev" ]; then
+        part_dev=$(awk '$2=="/boot" {print $1}' /proc/mounts 2>/dev/null | head -n1)
+    fi
+    if [ -z "$part_dev" ]; then
+        part_dev=$(blkid -t TYPE="squashfs" -o device 2>/dev/null | head -n1)
+    fi
+
     local disk_dev=""
     local part_prefix=""
-
-    case "$root_dev" in
-        /dev/nvme*n*p*|/dev/mmcblk*p*|/dev/loop*p*)
-            disk_dev=$(echo "$root_dev" | sed 's/p[0-9]*$//')
-            part_prefix="${disk_dev}p"
-            ;;
-        /dev/sd*[0-9]|/dev/vd*[0-9])
-            disk_dev=$(echo "$root_dev" | sed 's/[0-9]*$//')
-            part_prefix="${disk_dev}"
-            ;;
-    esac
-
-    if [ -z "$disk_dev" ] || [ ! -b "$disk_dev" ]; then
-        local p2_dev=$(lsblk -ndo PKNAME $(findmnt -n -o SOURCE /rom 2>/dev/null || findmnt -n -o SOURCE / 2>/dev/null) 2>/dev/null | head -n1)
-        if [ -n "$p2_dev" ] && [ -b "/dev/$p2_dev" ]; then
-            disk_dev="/dev/$p2_dev"
-            case "$disk_dev" in
-                /dev/nvme*|/dev/mmcblk*) part_prefix="${disk_dev}p" ;;
-                *) part_prefix="${disk_dev}" ;;
+    if [ -n "$part_dev" ]; then
+        local pkname=$(lsblk -ndo PKNAME "$part_dev" 2>/dev/null | head -n1)
+        if [ -n "$pkname" ] && [ -b "/dev/$pkname" ]; then
+            disk_dev="/dev/$pkname"
+        else
+            case "$part_dev" in
+                /dev/nvme*n*p*|/dev/mmcblk*p*|/dev/loop*p*)
+                    disk_dev=$(echo "$part_dev" | sed 's/p[0-9]*$//')
+                    ;;
+                /dev/sd*[0-9]|/dev/vd*[0-9])
+                    disk_dev=$(echo "$part_dev" | sed 's/[0-9]*$//')
+                    ;;
             esac
         fi
     fi
 
     [ -z "$disk_dev" ] || [ ! -b "$disk_dev" ] && return 0
 
+    case "$disk_dev" in
+        /dev/nvme*|/dev/mmcblk*|/dev/loop*) part_prefix="${disk_dev}p" ;;
+        *) part_prefix="${disk_dev}" ;;
+    esac
+
     local opt_part="${part_prefix}3"
+    local p2_name=$(basename "${part_prefix}2")
+    local disk_name=$(basename "$disk_dev")
 
     # 2. Recreate 3rd partition boundary if missing (first flash or after OTA sysupgrade)
-    if [ ! -b "$opt_part" ] && command -v parted >/dev/null 2>&1; then
-        sgdisk -e "$disk_dev" >/dev/null 2>&1 || true
-        local p2_end=$(parted -s "$disk_dev" unit MiB print 2>/dev/null | awk '/^ 2 / {gsub("MiB","",$3); print int($3)+1}')
-        local disk_end=$(parted -s "$disk_dev" unit MiB print 2>/dev/null | awk '/^Disk \/dev\// {gsub("MiB","",$3); print int($3)}')
-        if [ -n "$p2_end" ] && [ -n "$disk_end" ] && [ $((disk_end - p2_end)) -gt 1024 ]; then
-            parted -s "$disk_dev" unit MiB mkpart primary ext4 "${p2_end}MiB" 100% >/dev/null 2>&1 || true
+    if [ ! -b "$opt_part" ] && [ -f "/sys/class/block/$disk_name/size" ] && [ -f "/sys/class/block/$p2_name/start" ]; then
+        local disk_sectors=$(cat "/sys/class/block/$disk_name/size" 2>/dev/null || echo 0)
+        local p2_start=$(cat "/sys/class/block/$p2_name/start" 2>/dev/null || echo 0)
+        local p2_size=$(cat "/sys/class/block/$p2_name/size" 2>/dev/null || echo 0)
+        local p2_end=$((p2_start + p2_size))
+        local free_sectors=$((disk_sectors - p2_end))
+
+        # Require > 1 GiB (2097152 sectors of 512B) of unallocated space after partition 2
+        if [ "$free_sectors" -gt 2097152 ]; then
+            if command -v sgdisk >/dev/null 2>&1; then
+                sgdisk -e "$disk_dev" >/dev/null 2>&1 || true
+                sgdisk -n 3:0:0 -t 3:8300 -c 3:DOCKER_DATA "$disk_dev" >/dev/null 2>&1 || true
+            fi
             partprobe "$disk_dev" >/dev/null 2>&1 || true
-            sleep 2
+            sleep 1
+            if [ ! -b "$opt_part" ] && command -v parted >/dev/null 2>&1; then
+                parted -s "$disk_dev" unit s mkpart primary ext4 "${p2_end}s" 100% >/dev/null 2>&1 || true
+                partprobe "$disk_dev" >/dev/null 2>&1 || true
+                sleep 1
+            fi
         fi
     fi
 

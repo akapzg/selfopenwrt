@@ -190,6 +190,7 @@ if [ -f /etc/config/nginx ]; then
     uci add_list nginx._lan.include='conf.d/*.locations'
     uci set nginx._lan.access_log='off; # logd openwrt'
     uci commit nginx
+    [ -x /etc/init.d/nginx ] && /etc/init.d/nginx restart >/dev/null 2>&1 || true
 fi
 
 # ------------------------------------------------------------------------------
