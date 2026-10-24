@@ -89,15 +89,15 @@ fi
 
 # 5.2 QuickFile File Manager
 rm -rf feeds/luci/applications/luci-app-filemanager
-clone_or_fallback "https://github.com/sbwml/luci-app-quickfile.git" "" "package/new/quickfile" ""
+clone_or_fallback "https://github.com/sbwml/luci-app-quickfile.git" "" "package/new/quickfile" "$WORKSPACE_DIR/packages/quickfile"
 
 # 5.3 MosDNS v5 (Replace CLI-only feed package with full LuCI + v5 bundle)
 rm -rf feeds/packages/net/{mosdns,v2ray-geodata} feeds/luci/applications/luci-app-mosdns
-clone_or_fallback "https://github.com/sbwml/luci-app-mosdns.git" "v5" "package/new/mosdns" ""
-clone_or_fallback "https://github.com/sbwml/v2ray-geodata.git" "" "package/new/v2ray-geodata" ""
+clone_or_fallback "https://github.com/sbwml/luci-app-mosdns.git" "v5" "package/new/mosdns" "$WORKSPACE_DIR/packages/mosdns"
+clone_or_fallback "https://github.com/sbwml/v2ray-geodata.git" "" "package/new/v2ray-geodata" "$WORKSPACE_DIR/packages/v2ray-geodata"
 
 # 5.4 Nikki (Mihomo / Clash Meta)
-clone_or_fallback "https://github.com/nikkinikki-org/OpenWrt-nikki.git" "" "package/new/nikki" ""
+clone_or_fallback "https://github.com/nikkinikki-org/OpenWrt-nikki.git" "" "package/new/nikki" "$WORKSPACE_DIR/packages/nikki"
 
 # 5.5 Samba4 Multi-Channel & Root Access Tuning
 if [ -f feeds/packages/net/samba4/files/smb.conf.template ]; then
