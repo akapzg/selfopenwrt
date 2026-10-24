@@ -48,9 +48,9 @@ if [ -f feeds/packages/utils/dockerd/files/etc/config/dockerd ]; then
 fi
 
 echo ">>> [4/6] Modifying Official ImmortalWrt Tailscale (--netfilter-mode=off) & Samba4..."
-if [ -f feeds/packages/net/tailscale/files/tailscale.init ]; then
-    sed -i 's/procd_set_param command $PROG/procd_set_param command $PROG --netfilter-mode=off/g' feeds/packages/net/tailscale/files/tailscale.init
-    sed -i 's|/usr/sbin/tailscaled|/usr/sbin/tailscaled --netfilter-mode=off|g' feeds/packages/net/tailscale/files/tailscale.init
+if [ -f feeds/packages/net/tailscale/Makefile ]; then
+    # Prevent file conflict with luci-app-tailscale (/etc/init.d/tailscale & /etc/config/tailscale)
+    sed -i '/\/etc\/init\.d\/tailscale/d; /\/etc\/config\/tailscale/d' feeds/packages/net/tailscale/Makefile
 fi
 if [ -f feeds/packages/net/samba4/files/smb.conf.template ]; then
     sed -i 's/invalid users = root/#invalid users = root/g' feeds/packages/net/samba4/files/smb.conf.template
@@ -66,9 +66,22 @@ rm -rf feeds/packages/net/{mosdns,v2ray-geodata} feeds/luci/applications/luci-ap
 mkdir -p package/new
 cp -rf "$WORKSPACE_DIR/packages/"* package/new/
 
+# Ensure luci-app-tailscale always enforces --netfilter-mode=off even after upstream sync
+if [ -f package/new/luci-app-tailscale/root/etc/init.d/tailscale ]; then
+    sed -i 's/procd_set_param command \$PROGD$/procd_set_param command \$PROGD --netfilter-mode=off/g' package/new/luci-app-tailscale/root/etc/init.d/tailscale
+    sed -i '/Remove network settings/,/\/etc\/init\.d\/firewall reload/d' package/new/luci-app-tailscale/root/etc/init.d/tailscale
+fi
+if [ -f package/new/luci-app-tailscale/root/usr/sbin/tailscale_helper ]; then
+    sed -i '/# Configure network interface for Tailscale/,$d' package/new/luci-app-tailscale/root/usr/sbin/tailscale_helper
+    cat >> package/new/luci-app-tailscale/root/usr/sbin/tailscale_helper <<'EOF'
+[ -n "$(uci changes dhcp)" ] && uci commit dhcp && /etc/init.d/dnsmasq reload
+exit 0
+EOF
+fi
+
 echo ">>> [6/6] Injecting Custom Files (uci-defaults, emmc-install, OTA URL)..."
 cp -rf "$WORKSPACE_DIR/files" ./
-chmod 0755 files/etc/uci-defaults/* files/sbin/* 2>/dev/null || true
+chmod 0755 files/etc/uci-defaults/* files/etc/init.d/* files/sbin/* 2>/dev/null || true
 
 OTA_JSON_URL="https://gh-proxy.com/https://github.com/${REPO_SLUG}/releases/latest/download/ota.json"
 cat >> files/etc/uci-defaults/99-custom-settings <<EOF

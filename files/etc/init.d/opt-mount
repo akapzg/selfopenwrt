@@ -1,0 +1,90 @@
+#!/bin/sh /etc/rc.common
+# ==============================================================================
+# Early-Boot /opt Partition Recovery & Auto-Mount Service (START=18)
+# Runs BEFORE network (START=20) and dockerd (START=99) on every boot,
+# ensuring /opt (3rd partition, LABEL=DOCKER_DATA) is always restored after OTA.
+# ==============================================================================
+
+START=18
+
+boot() {
+    start
+}
+
+start() {
+    # Skip if /opt is already a mounted partition
+    if mountpoint -q /opt 2>/dev/null; then
+        mkdir -p /opt/docker
+        return 0
+    fi
+
+    # 1. Identify physical boot disk (supports sda / nvme0n1 / mmcblk0 / vda)
+    local root_dev=$(sed -n 's/.*root=\([^ ]*\).*/\1/p' /proc/cmdline)
+    local disk_dev=""
+    local part_prefix=""
+
+    case "$root_dev" in
+        /dev/nvme*n*p*|/dev/mmcblk*p*|/dev/loop*p*)
+            disk_dev=$(echo "$root_dev" | sed 's/p[0-9]*$//')
+            part_prefix="${disk_dev}p"
+            ;;
+        /dev/sd*[0-9]|/dev/vd*[0-9])
+            disk_dev=$(echo "$root_dev" | sed 's/[0-9]*$//')
+            part_prefix="${disk_dev}"
+            ;;
+    esac
+
+    if [ -z "$disk_dev" ] || [ ! -b "$disk_dev" ]; then
+        local p2_dev=$(lsblk -ndo PKNAME $(findmnt -n -o SOURCE /rom 2>/dev/null || findmnt -n -o SOURCE / 2>/dev/null) 2>/dev/null | head -n1)
+        if [ -n "$p2_dev" ] && [ -b "/dev/$p2_dev" ]; then
+            disk_dev="/dev/$p2_dev"
+            case "$disk_dev" in
+                /dev/nvme*|/dev/mmcblk*) part_prefix="${disk_dev}p" ;;
+                *) part_prefix="${disk_dev}" ;;
+            esac
+        fi
+    fi
+
+    [ -z "$disk_dev" ] || [ ! -b "$disk_dev" ] && return 0
+
+    local opt_part="${part_prefix}3"
+
+    # 2. Recreate 3rd partition boundary if missing (first flash or after OTA sysupgrade)
+    if [ ! -b "$opt_part" ] && command -v parted >/dev/null 2>&1; then
+        sgdisk -e "$disk_dev" >/dev/null 2>&1 || true
+        local p2_end=$(parted -s "$disk_dev" unit MiB print 2>/dev/null | awk '/^ 2 / {gsub("MiB","",$3); print int($3)+1}')
+        local disk_end=$(parted -s "$disk_dev" unit MiB print 2>/dev/null | awk '/^Disk \/dev\// {gsub("MiB","",$3); print int($3)}')
+        if [ -n "$p2_end" ] && [ -n "$disk_end" ] && [ $((disk_end - p2_end)) -gt 1024 ]; then
+            parted -s "$disk_dev" unit MiB mkpart primary ext4 "${p2_end}MiB" 100% >/dev/null 2>&1 || true
+            partprobe "$disk_dev" >/dev/null 2>&1 || true
+            sleep 2
+        fi
+    fi
+
+    # 3. Check filesystem signature: preserve existing DOCKER_DATA / ext4 on OTA, or format on first boot
+    if [ -b "$opt_part" ]; then
+        local fs_label=$(blkid -s LABEL -o value "$opt_part" 2>/dev/null)
+        local fs_type=$(blkid -s TYPE -o value "$opt_part" 2>/dev/null)
+        if [ "$fs_label" != "DOCKER_DATA" ] && [ "$fs_type" != "ext4" ]; then
+            mkfs.ext4 -F -L "DOCKER_DATA" "$opt_part" >/dev/null 2>&1
+        else
+            e2fsck -y "$opt_part" >/dev/null 2>&1 || true
+        fi
+
+        local opt_uuid=$(blkid -s UUID -o value "$opt_part" 2>/dev/null)
+        mkdir -p /opt
+        mount -t ext4 -o rw,noatime "$opt_part" /opt >/dev/null 2>&1 || true
+        mkdir -p /opt/docker
+
+        if [ -n "$opt_uuid" ] && [ "$(uci -q get fstab.opt_data.uuid)" != "$opt_uuid" ]; then
+            uci -q delete fstab.opt_data
+            uci set fstab.opt_data='mount'
+            uci set fstab.opt_data.uuid="$opt_uuid"
+            uci set fstab.opt_data.target='/opt'
+            uci set fstab.opt_data.enabled='1'
+            uci set fstab.opt_data.options='rw,noatime'
+            uci set fstab.opt_data.enabled_fsck='1'
+            uci commit fstab
+        fi
+    fi
+}

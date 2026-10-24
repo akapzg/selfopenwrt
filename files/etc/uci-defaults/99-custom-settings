@@ -193,83 +193,11 @@ if [ -f /etc/config/nginx ]; then
 fi
 
 # ------------------------------------------------------------------------------
-# 8. 自动扩容/无损找回剩余磁盘空间并挂载至 /opt (供 Docker / OpenList / qB 使用)
+# 8. 启用并立即执行早期 /opt 自动分区与 OTA 无损恢复服务 (START=18，早于 Docker)
 # ------------------------------------------------------------------------------
-auto_mount_opt() {
-    # 1. 查找当前根分区所在的物理磁盘 (支持 sda / nvme0n1 / mmcblk0 / vda)
-    local root_dev=$(sed -n 's/.*root=\([^ ]*\).*/\1/p' /proc/cmdline)
-    local disk_dev=""
-    local part_prefix=""
-
-    case "$root_dev" in
-        /dev/nvme*n*p*|/dev/mmcblk*p*|/dev/loop*p*)
-            disk_dev=$(echo "$root_dev" | sed 's/p[0-9]*$//')
-            part_prefix="${disk_dev}p"
-            ;;
-        /dev/sd*[0-9]|/dev/vd*[0-9])
-            disk_dev=$(echo "$root_dev" | sed 's/[0-9]*$//')
-            part_prefix="${disk_dev}"
-            ;;
-    esac
-
-    # 若 cmdline 为 PARTUUID，则通过 /dev/root 或挂载表反查第 2 分区
-    if [ -z "$disk_dev" ] || [ ! -b "$disk_dev" ]; then
-        local p2_dev=$(lsblk -ndo PKNAME $(findmnt -n -o SOURCE /rom 2>/dev/null || findmnt -n -o SOURCE / 2>/dev/null) 2>/dev/null | head -n1)
-        if [ -n "$p2_dev" ] && [ -b "/dev/$p2_dev" ]; then
-            disk_dev="/dev/$p2_dev"
-            case "$disk_dev" in
-                /dev/nvme*|/dev/mmcblk*) part_prefix="${disk_dev}p" ;;
-                *) part_prefix="${disk_dev}" ;;
-            esac
-        fi
-    fi
-
-    [ -z "$disk_dev" ] || [ ! -b "$disk_dev" ] && return 0
-
-    local opt_part="${part_prefix}3"
-
-    # 2. 若第 3 分区不存在（全新刷机或 OTA 升级覆盖了前部 GPT 表），紧贴第 2 分区末尾重建第 3 分区框
-    if [ ! -b "$opt_part" ] && command -v parted >/dev/null 2>&1; then
-        # 修复 GPT 备份表到磁盘末尾
-        sgdisk -e "$disk_dev" >/dev/null 2>&1 || true
-        # 获取第 2 分区结束位置 (MiB)
-        local p2_end=$(parted -s "$disk_dev" unit MiB print 2>/dev/null | awk '/^ 2 / {gsub("MiB","",$3); print int($3)+1}')
-        local disk_end=$(parted -s "$disk_dev" unit MiB print 2>/dev/null | awk '/^Disk \/dev\// {gsub("MiB","",$3); print int($3)}')
-        if [ -n "$p2_end" ] && [ -n "$disk_end" ] && [ $((disk_end - p2_end)) -gt 1024 ]; then
-            # 仅在分区表登记第 3 分区边界，不擦除已有文件系统数据
-            parted -s "$disk_dev" unit MiB mkpart primary ext4 "${p2_end}MiB" 100% >/dev/null 2>&1 || true
-            partprobe "$disk_dev" >/dev/null 2>&1 || true
-            sleep 2
-        fi
-    fi
-
-    # 3. 检查第 3 分区文件系统：若有 DOCKER_DATA 标签则直接无损找回，否则首次格式化为 ext4
-    if [ -b "$opt_part" ]; then
-        local fs_label=$(blkid -s LABEL -o value "$opt_part" 2>/dev/null)
-        local fs_type=$(blkid -s TYPE -o value "$opt_part" 2>/dev/null)
-        if [ "$fs_label" != "DOCKER_DATA" ] && [ "$fs_type" != "ext4" ]; then
-            mkfs.ext4 -F -L "DOCKER_DATA" "$opt_part" >/dev/null 2>&1
-        else
-            e2fsck -y "$opt_part" >/dev/null 2>&1 || true
-        fi
-
-        local opt_uuid=$(blkid -s UUID -o value "$opt_part" 2>/dev/null)
-        mkdir -p /opt
-        if [ -n "$opt_uuid" ]; then
-            uci -q delete fstab.opt_data
-            uci set fstab.opt_data='mount'
-            uci set fstab.opt_data.uuid="$opt_uuid"
-            uci set fstab.opt_data.target='/opt'
-            uci set fstab.opt_data.enabled='1'
-            uci set fstab.opt_data.options='rw,noatime'
-            uci set fstab.opt_data.enabled_fsck='1'
-            uci commit fstab
-            mount "$opt_part" /opt >/dev/null 2>&1 || /etc/init.d/fstab restart
-            mkdir -p /opt/docker
-        fi
-    fi
-}
-
-auto_mount_opt
+if [ -x /etc/init.d/opt-mount ]; then
+    /etc/init.d/opt-mount enable
+    /etc/init.d/opt-mount start
+fi
 
 exit 0

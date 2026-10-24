@@ -145,17 +145,11 @@ jobs:
             cp -a openwrt/bin/targets/x86/64/config.buildinfo artifact/x86_64.config.buildinfo
             sq_file=$(basename $(ls artifact/*-squashfs-combined-efi.img.gz | head -n1))
             sq_sha256=$(sha256sum "artifact/$sq_file" | awk '{print $1}')
-            cat > artifact/ota_x86_64.json <<EOF
-          {
-            "x86_64": [
-              {
-                "build_date": "${{ needs.check-upstream.outputs.build_date }}",
-                "sha256sum": "$sq_sha256",
-                "url": "https://gh-proxy.com/https://github.com/${{ github.repository }}/releases/latest/download/$sq_file"
-              }
-            ]
-          }
-          EOF
+            jq -n \
+              --arg bd "${{ needs.check-upstream.outputs.build_date }}" \
+              --arg sha "$sq_sha256" \
+              --arg url "https://gh-proxy.com/https://github.com/${{ github.repository }}/releases/latest/download/$sq_file" \
+              '{"x86_64": [{"build_date": $bd, "sha256sum": $sha, "url": $url}]}' > artifact/ota_x86_64.json
           elif [ "${{ matrix.model }}" = "nanopi-r5s" ]; then
             cp -a openwrt/bin/targets/rockchip/armv8/*-sysupgrade.img.gz artifact/
             cp -a openwrt/bin/targets/rockchip/armv8/*.manifest artifact/nanopi-r5s.manifest
@@ -164,24 +158,13 @@ jobs:
             r5s_sha256=$(sha256sum "artifact/$r5s_file" | awk '{print $1}')
             r5c_file=$(basename $(ls artifact/*-r5c-squashfs-sysupgrade.img.gz | head -n1))
             r5c_sha256=$(sha256sum "artifact/$r5c_file" | awk '{print $1}')
-            cat > artifact/ota_nanopi-r5s.json <<EOF
-          {
-            "friendlyarm,nanopi-r5s": [
-              {
-                "build_date": "${{ needs.check-upstream.outputs.build_date }}",
-                "sha256sum": "$r5s_sha256",
-                "url": "https://gh-proxy.com/https://github.com/${{ github.repository }}/releases/latest/download/$r5s_file"
-              }
-            ],
-            "friendlyarm,nanopi-r5c": [
-              {
-                "build_date": "${{ needs.check-upstream.outputs.build_date }}",
-                "sha256sum": "$r5c_sha256",
-                "url": "https://gh-proxy.com/https://github.com/${{ github.repository }}/releases/latest/download/$r5c_file"
-              }
-            ]
-          }
-          EOF
+            jq -n \
+              --arg bd "${{ needs.check-upstream.outputs.build_date }}" \
+              --arg r5s_sha "$r5s_sha256" \
+              --arg r5s_url "https://gh-proxy.com/https://github.com/${{ github.repository }}/releases/latest/download/$r5s_file" \
+              --arg r5c_sha "$r5c_sha256" \
+              --arg r5c_url "https://gh-proxy.com/https://github.com/${{ github.repository }}/releases/latest/download/$r5c_file" \
+              '{"friendlyarm,nanopi-r5s": [{"build_date": $bd, "sha256sum": $r5s_sha, "url": $r5s_url}], "friendlyarm,nanopi-r5c": [{"build_date": $bd, "sha256sum": $r5c_sha, "url": $r5c_url}]}' > artifact/ota_nanopi-r5s.json
           fi
           cd artifact && sha256sum *.img.gz > sha256sums_${{ matrix.model }}.txt
 
