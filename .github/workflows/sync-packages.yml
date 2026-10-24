@@ -1,10 +1,8 @@
-name: Sync Third-Party Packages
+name: Sync Third-Party Packages (Manual)
 
 on:
+  # 仅支持手动触发 (workflow_dispatch)，平时完全冻结 packages/ 已验证版本，防止上游插件静默更新引入 Bug
   workflow_dispatch:
-  schedule:
-    # 每天北京时间 03:00 (UTC 19:00) 自动巡检并同步第三方插件上游更新至本仓库 packages/ 目录
-    - cron: '0 19 * * *'
 
 permissions:
   contents: write

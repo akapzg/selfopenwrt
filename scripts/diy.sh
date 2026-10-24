@@ -119,4 +119,22 @@ EOF
 sed -i '/^exit 0$/d' files/etc/uci-defaults/99-custom-settings
 echo "exit 0" >> files/etc/uci-defaults/99-custom-settings
 
-echo ">>> DIY Customization Completed Successfully!"
+echo ">>> [7/7] Running Pre-Build Patch Assertions..."
+assert_check() {
+    local cond="$1"
+    local msg="$2"
+    if ! eval "$cond"; then
+        echo "ASSERTION FAILED: $msg" >&2
+        exit 1
+    fi
+}
+assert_check "grep -q '192.168.100.1' package/base-files/files/bin/config_generate" "Default LAN IP 192.168.100.1 patch failed"
+assert_check "grep -q '/bin/bash' package/base-files/files/etc/passwd" "Default shell /bin/bash patch failed"
+assert_check "grep -q '+luci-nginx' feeds/luci/collections/luci-light/Makefile" "luci-light -> luci-nginx patch failed"
+assert_check "! grep -q '+iptables' feeds/packages/utils/dockerd/Makefile" "dockerd Makefile still contains +iptables"
+assert_check "! grep -q '+iptables' feeds/packages/net/sqm-scripts/Makefile" "sqm-scripts Makefile still contains +iptables"
+assert_check "grep -q 'x86_64' package/emortal/cpufreq/Makefile" "cpufreq x86_64 architecture patch failed"
+assert_check "grep -q -- '--netfilter-mode=off' package/new/luci-app-tailscale/root/etc/init.d/tailscale" "Tailscale --netfilter-mode=off patch failed"
+assert_check "grep -q 'curl -L' package/new/luci-app-ota/root/usr/bin/ota" "OTA curl -L redirect patch failed"
+
+echo ">>> DIY Customization & Assertions Completed Successfully!"

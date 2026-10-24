@@ -13,9 +13,6 @@ on:
         required: false
         default: ''
         type: string
-  schedule:
-    # 每天北京时间 04:00 (UTC 20:00) 自动巡检上游 ImmortalWrt 是否有新正式版发布
-    - cron: '0 20 * * *'
 
 permissions:
   contents: write
@@ -119,6 +116,25 @@ jobs:
           cat "$GITHUB_WORKSPACE/builder-repo/configs/${{ matrix.model }}.config" > .config
           cat "$GITHUB_WORKSPACE/builder-repo/configs/common.config" >> .config
           make defconfig
+
+          # 强制自检断言：防止上游 Makefile 变动导致 iptables 混入或 Nginx/插件被静默丢弃
+          echo ">>> Running Post-Defconfig Integrity Assertions..."
+          if grep -qE '^CONFIG_PACKAGE_ip6?tables.*=y' .config; then
+            echo "ERROR: Legacy iptables package detected in .config! Pure fw4 invariant violated:"
+            grep -E '^CONFIG_PACKAGE_ip6?tables.*=y' .config
+            exit 1
+          fi
+          if grep -q '^CONFIG_PACKAGE_uhttpd=y' .config; then
+            echo "ERROR: uhttpd is enabled in .config! Nginx replacement failed."
+            exit 1
+          fi
+          for req_pkg in luci-nginx luci-app-cpufreq luci-app-dockerman luci-app-tailscale luci-app-mosdns luci-app-nikki luci-app-homeproxy luci-app-quickfile luci-app-ota; do
+            if ! grep -q "^CONFIG_PACKAGE_${req_pkg}=y" .config; then
+              echo "ERROR: Required package ${req_pkg} is missing from .config after make defconfig!"
+              exit 1
+            fi
+          done
+          echo ">>> All .config assertions passed!"
 
           # 对齐官方内核 vermagic（使编译出的固件可直接通过 apk 安装官方源中的所有 kmod-* 内核模块），并写入 BUILD_DATE 供 OTA 比对
           rel_ver="${{ needs.check-upstream.outputs.target_tag }}"
