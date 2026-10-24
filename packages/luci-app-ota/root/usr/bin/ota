@@ -69,17 +69,21 @@ lock_download() {
 
 # 0: found newer fw, 1: already newest fw, *: err
 do_check() {
-    url_check=$(curl -I -o /dev/null -s -w %{http_code} "$API")
-    [ $url_check -ne 200 ] && exit 255
-    curl -s "$API" > /var/run/ota/fw.json
+    url_check=$(curl -L -s -o /dev/null -w %{http_code} "$API")
+    [ "$url_check" -ne 200 ] && exit 255
+    curl -L -s "$API" > /var/run/ota/fw.json
     read_json
-    NEW_VERSION=$(basename $FW_URL | awk -F- '{if (NF >= 3 && $3 ~ /^rc/) {print $2 "-" $3} else {print $2}}')
+    if [ -n "$FW_VERSION" ]; then
+        NEW_VERSION="$FW_VERSION"
+    else
+        NEW_VERSION=$(basename $FW_URL | awk -F- '{if (NF >= 3 && $3 ~ /^rc/) {print $2 "-" $3} else {print $2}}')
+    fi
     if [ "$BUILD_DATE" -lt "$FW_BUILD_DATE" ]; then
         BOARD_NAME=$(board_name)
         CURRENT_BUILD_DATE_FORMATTED=$(date '+%Y-%m-%d %H:%M:%S' -d @$BUILD_DATE)
         FW_BUILD_DATE_FORMATTED=$(date '+%Y-%m-%d %H:%M:%S' -d @$FW_BUILD_DATE)
         
-        printf '{"latest":false,"model":"%s","current_version":"%s","current_build_date":"%s","new_version":"OpenWrt %s","new_build_date":"%s","logs":"%s"}' \
+        printf '{"latest":false,"model":"%s","current_version":"%s","current_build_date":"%s","new_version":"ImmortalWrt %s","new_build_date":"%s","logs":"%s"}' \
             "$BOARD_NAME" \
             "$PRETTY_NAME" \
             "$CURRENT_BUILD_DATE_FORMATTED" \
@@ -141,11 +145,12 @@ read_json(){
     FW_BUILD_DATE=$(jsonfilter -i /var/run/ota/fw.json -e "@['$(board_name)'][0]['build_date']")
     FW_SHA256SUM=$(jsonfilter -i /var/run/ota/fw.json -e "@['$(board_name)'][0]['sha256sum']")
     FW_URL=$(jsonfilter -i /var/run/ota/fw.json -e "@['$(board_name)'][0]['url']")
-    FW_LOGS=$(jsonfilter -i /var/run/ota/fw.json -e "@['$(board_name)'][0]['logs']" || true)
+    FW_VERSION=$(jsonfilter -i /var/run/ota/fw.json -e "@['$(board_name)'][0]['version']" 2>/dev/null || true)
+    FW_LOGS=$(jsonfilter -i /var/run/ota/fw.json -e "@['$(board_name)'][0]['logs']" 2>/dev/null || true)
 }
 
 ota_init(){
-    mkdir -p /var/run/ota >/dev/null 2>&1 || true
+    mkdir -p /var/run/ota /var/lock >/dev/null 2>&1 || true
 }
 
 usage() {

@@ -93,6 +93,11 @@ if [ -f package/new/luci-app-tailscale/root/usr/sbin/tailscale_helper ]; then
 exit 0
 EOF
 fi
+if [ -f package/new/luci-app-ota/root/usr/bin/ota ]; then
+    # Ensure curl follows HTTP 302 redirects from GitHub Releases / gh-proxy
+    sed -i 's/curl -I -o \/dev\/null -s -w/curl -L -s -o \/dev\/null -w/g' package/new/luci-app-ota/root/usr/bin/ota
+    sed -i 's/curl -s "\$API"/curl -L -s "\$API"/g' package/new/luci-app-ota/root/usr/bin/ota
+fi
 
 echo ">>> [6/6] Injecting Custom Files (uci-defaults, emmc-install, OTA URL)..."
 rm -rf files
