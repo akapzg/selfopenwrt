@@ -1,0 +1,26 @@
+msgid ""
+msgstr "Content-Type: text/plain; charset=UTF-8"
+
+msgid "HomeBox"
+msgstr "HomeBox 内网测速"
+
+msgid "HomeBox is an HTML5 local network speed test tool."
+msgstr "HomeBox 是一款轻量级 HTML5 局域网内网测速工具。"
+
+msgid "RUNNING"
+msgstr "运行中"
+
+msgid "NOT RUNNING"
+msgstr "未运行"
+
+msgid "Open Web UI"
+msgstr "打开 Web 界面"
+
+msgid "Settings"
+msgstr "基础设置"
+
+msgid "Enable"
+msgstr "启用"
+
+msgid "Listen Port"
+msgstr "监听端口"

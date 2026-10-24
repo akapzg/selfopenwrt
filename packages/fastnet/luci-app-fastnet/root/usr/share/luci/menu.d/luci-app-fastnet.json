@@ -1,0 +1,14 @@
+{
+	"admin/services/fastnet": {
+		"title": "FastNet",
+		"order": 62,
+		"action": {
+			"type": "view",
+			"path": "fastnet"
+		},
+		"depends": {
+			"acl": [ "luci-app-fastnet" ],
+			"uci": { "fastnet": true }
+		}
+	}
+}

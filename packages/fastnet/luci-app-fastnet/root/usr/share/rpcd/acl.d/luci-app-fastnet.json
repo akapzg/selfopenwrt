@@ -1,0 +1,14 @@
+{
+	"luci-app-fastnet": {
+		"description": "Grant UCI access for luci-app-fastnet",
+		"read": {
+			"uci": [ "fastnet" ],
+			"ubus": {
+				"service": [ "list" ]
+			}
+		},
+		"write": {
+			"uci": [ "fastnet" ]
+		}
+	}
+}

@@ -23,6 +23,8 @@ sed -i 's/+uhttpd /+luci-nginx /g' feeds/luci/collections/luci-light/Makefile
 sed -i 's/+luci /+luci-nginx /g' feeds/luci/collections/luci-ssl-openssl/Makefile
 sed -i 's/+luci /+luci-nginx /g' feeds/luci/collections/luci-ssl/Makefile
 sed -i '/uhttpd-mod-ubus/d' feeds/luci/collections/luci-light/Makefile
+[ -f feeds/luci/applications/luci-app-aria2/Makefile ] && sed -i 's/+ariang$/+ariang-nginx/g' feeds/luci/applications/luci-app-aria2/Makefile
+[ -f feeds/packages/net/ariang/Makefile ] && sed -i '/DEPENDS += +uhttpd/d' feeds/packages/net/ariang/Makefile
 
 if [ -f feeds/packages/net/nginx/files-luci-support/60_nginx-luci-support ]; then
     sed -i 's/ubus_parallel_req 2/ubus_parallel_req 6/g' feeds/packages/net/nginx/files-luci-support/60_nginx-luci-support
@@ -38,6 +40,10 @@ if [ -f feeds/packages/net/uwsgi/files-luci-support/luci-webui.ini ]; then
 fi
 if [ -f package/system/rpcd/files/rpcd.config ]; then
     sed -i 's/option timeout 30/option timeout 60/g' package/system/rpcd/files/rpcd.config
+fi
+if [ -f feeds/luci/applications/luci-app-package-manager/root/usr/libexec/package-manager-call ]; then
+    # Allow installing third-party unsigned .apk packages via LuCI Package Manager UI
+    sed -i 's/action="add"$/action="add --allow-untrusted"/g' feeds/luci/applications/luci-app-package-manager/root/usr/libexec/package-manager-call
 fi
 
 echo ">>> [3/6] Modifying Official Packages (Pure fw4: Docker, SQM, CPUFreq)..."
@@ -80,6 +86,7 @@ mkdir -p package/new
 cp -rf "$WORKSPACE_DIR/packages/"* package/new/
 rm -rf package/new/nikki/mihomo-alpha
 find package/new -type f -exec sed -i 's/\r$//' {} +
+chmod 0755 package/new/homebox/homebox/files/* package/new/fastnet/fastnet/files/* package/new/luci-app-lan-scanner/root/usr/libexec/* 2>/dev/null || true
 
 # Ensure luci-app-tailscale always enforces --netfilter-mode=off even after upstream sync
 if [ -f package/new/luci-app-tailscale/root/etc/init.d/tailscale ]; then
@@ -136,5 +143,6 @@ assert_check "! grep -q '+iptables' feeds/packages/net/sqm-scripts/Makefile" "sq
 assert_check "grep -q 'x86_64' package/emortal/cpufreq/Makefile" "cpufreq x86_64 architecture patch failed"
 assert_check "grep -q -- '--netfilter-mode=off' package/new/luci-app-tailscale/root/etc/init.d/tailscale" "Tailscale --netfilter-mode=off patch failed"
 assert_check "grep -q 'curl -L' package/new/luci-app-ota/root/usr/bin/ota" "OTA curl -L redirect patch failed"
+assert_check "grep -q -- '--allow-untrusted' feeds/luci/applications/luci-app-package-manager/root/usr/libexec/package-manager-call" "LuCI package-manager --allow-untrusted patch failed"
 
 echo ">>> DIY Customization & Assertions Completed Successfully!"

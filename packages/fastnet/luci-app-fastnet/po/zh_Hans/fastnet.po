@@ -1,0 +1,32 @@
+msgid ""
+msgstr "Content-Type: text/plain; charset=UTF-8"
+
+msgid "FastNet"
+msgstr "FastNet 网络测速"
+
+msgid "FastNet provides network speed testing, NAT/IPv6 diagnostics, and a Web UI."
+msgstr "FastNet 提供全链路网络快速体检、内外网测速、NAT/IPv6 检测与 Web 界面。"
+
+msgid "RUNNING"
+msgstr "运行中"
+
+msgid "NOT RUNNING"
+msgstr "未运行"
+
+msgid "Open Web UI"
+msgstr "打开 Web 界面"
+
+msgid "Settings"
+msgstr "基础设置"
+
+msgid "Enable"
+msgstr "启用"
+
+msgid "Listen Port"
+msgstr "监听端口"
+
+msgid "API Token"
+msgstr "访问 Token"
+
+msgid "Enable Logging"
+msgstr "启用日志"
