@@ -128,13 +128,13 @@ jobs:
             echo "ERROR: uhttpd is enabled in .config! Nginx replacement failed."
             exit 1
           fi
-          for req_pkg in luci-nginx luci-app-cpufreq luci-app-dockerman luci-app-tailscale luci-app-mosdns luci-app-nikki luci-app-homeproxy luci-app-quickfile luci-app-ota; do
-            if ! grep -q "^CONFIG_PACKAGE_${req_pkg}=y" .config; then
-              echo "ERROR: Required package ${req_pkg} is missing from .config after make defconfig!"
+          for sym in $(grep -hE '^CONFIG_PACKAGE_.*=y' "$GITHUB_WORKSPACE/builder-repo/configs/${{ matrix.model }}.config" "$GITHUB_WORKSPACE/builder-repo/configs/common.config" | cut -d= -f1); do
+            if ! grep -q "^${sym}=y" .config; then
+              echo "ERROR: Configured package ${sym}=y was dropped by make defconfig!"
               exit 1
             fi
           done
-          echo ">>> All .config assertions passed!"
+          echo ">>> All .config assertions passed (100% package retention verified)!"
 
           # 对齐官方内核 vermagic（使编译出的固件可直接通过 apk 安装官方源中的所有 kmod-* 内核模块），并写入 BUILD_DATE 供 OTA 比对
           rel_ver="${{ needs.check-upstream.outputs.target_tag }}"
