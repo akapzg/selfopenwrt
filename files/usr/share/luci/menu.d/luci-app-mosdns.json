@@ -1,0 +1,53 @@
+{
+	"admin/network/mosdns": {
+		"title": "MosDNS",
+		"order": 45,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": [ "luci-app-mosdns" ],
+			"uci": { "mosdns": true }
+		}
+	},
+	"admin/network/mosdns/basic": {
+		"title": "Basic Setting",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "mosdns/basic"
+		}
+	},
+	"admin/network/mosdns/rules": {
+		"title": "Rules",
+		"order": 15,
+		"action": {
+			"type": "view",
+			"path": "mosdns/rules"
+		}
+	},
+	"admin/network/mosdns/update": {
+		"title": "Geodata Update",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "mosdns/update"
+		}
+	},
+	"admin/network/mosdns/statistics": {
+		"title": "Statistics",
+		"order": 25,
+		"action": {
+			"type": "view",
+			"path": "mosdns/statistics"
+		}
+	},
+	"admin/network/mosdns/logs": {
+		"title": "Logs",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "mosdns/logs"
+		}
+	}
+}

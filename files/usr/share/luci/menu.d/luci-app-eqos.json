@@ -1,0 +1,14 @@
+{
+	"admin/network/eqos": {
+		"title": "EQoS",
+		"order": 60,
+		"action": {
+			"type": "view",
+			"path": "eqos"
+		},
+		"depends": {
+			"acl": [ "luci-app-eqos" ],
+			"uci": { "eqos": true }
+		}
+	}
+}
