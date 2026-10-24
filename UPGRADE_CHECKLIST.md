@@ -113,7 +113,7 @@ grep -E '^CONFIG_PACKAGE_(ip6?tables|uhttpd).*=y' .config || echo "预检通过�
 
 ---
 
-### 2. 新增其他设备的固件（只需 2 步，自动继承全部 28 款插件与系统优化）
+### 2. 新增其他设备的固件（只需 2 步，自动继承全部 31 款插件与系统优化）
 
 由于本项目将 **硬件底层（`configs/<设备名>.config`）** 与 **公共插件层（[`configs/common.config`](configs/common.config)）** 完全解耦，新增一台设备（例如 `NanoPi R6S` 或其他 ARM/x86 路由）只需 2 步：
 
@@ -135,5 +135,19 @@ grep -E '^CONFIG_PACKAGE_(ip6?tables|uhttpd).*=y' .config || echo "预检通过�
    CONFIG_PACKAGE_kmod-r8125=y
    ```
 2. **在 [`.github/workflows/build.yml`](.github/workflows/build.yml) 中注册新设备**：
-   - 在 `matrix.model` 列表下增加 `- nanopi-r6s`（编译时会自动将 `configs/nanopi-r6s.config` 与 [`configs/common.config`](configs/common.config) 合并，自动拥有全部 28 款插件、纯 `fw4` 防火墙、Nginx、`/opt` 自动挂载与 `192.168.100.1` 配置）；
+   - 在 `matrix.model` 列表下增加 `- nanopi-r6s`（编译时会自动将 `configs/nanopi-r6s.config` 与 [`configs/common.config`](configs/common.config) 合并，自动拥有全部 31 款插件、纯 `fw4` 防火墙、Nginx、`/opt` 自动挂载与 `192.168.100.1` 配置）；
    - 在 `Collect Firmware Artifacts & Generate OTA Metadata` 步骤中增加对应的固件收集与 `ota_<设备名>.json` 生成条目即可。
+
+---
+
+## 六、日常使用：软件包管理器在线更新避坑指南
+
+> **核心原则**：在 LuCI **系统 -> 软件包** 中**随时在线安装新软件或新内核驱动 (`kmod-*`) 100% 兼容**；但**固件已内置的插件**建议统一通过“编译新固件 + OTA 在线更新”升级，请勿在软件包列表中直接点“升级”。
+
+| 软件包类别 | 具体包含包名 | 能否在网页“软件包”点升级？ | 原因说明 |
+| :--- | :--- | :---: | :--- |
+| **已打补丁的内置包** | `dockerd`、`sqm-scripts`、`ariang-nginx`、`tailscale`、`luci-app-ota`、`luci-app-package-manager`、`luci-app-cpufreq` | ❌ **严禁** | 我们在 [`scripts/diy.sh`](scripts/diy.sh) 中剥离了它们的 `+iptables` / `+uhttpd` 冲突依赖并注入了定制补丁；若从官方源在线升级，会拉回 `iptables` / `uhttpd` 或覆盖补丁。 |
+| **系统核心底层** | `kernel`、`base-files`、`libc`、`fstools` | ❌ **严禁** | OpenWrt 底层组件升级必须走整包固件 **OTA 在线更新**，单包升级极易导致系统变砖。 |
+| **本仓库独有插件** | `nikki`、`mosdns`、`quickfile`、`fastnet`、`luci-app-lan-scanner`、`luci-app-tailscale`、`luci-theme-argon` | ➖ **官方源无此包** | 由本仓库 [`packages/`](packages/) 维护，需通过 GitHub Actions 运行 `Sync Custom Packages` 并重新编译固件更新。 |
+| **新增驱动与扩展工具** | 任意 `kmod-*` 内核驱动、`iperf3`、`tmux`、`vim`、`smartmontools`、手动上传的 `.apk` 等 | ✅ **随时安装/升级** | 已对齐官方内核 `vermagic` 并内置 `--allow-untrusted` 免签安装补丁，可随时在线安装与更新。 |
+
