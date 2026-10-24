@@ -1,0 +1,98 @@
+{
+	"admin/docker": {
+		"title": "Docker",
+		"order": 45,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": [ "luci-app-dockerman" ],
+			"fs": {
+				"/etc/init.d/dockerd": "executable",
+				"/usr/bin/dockerd": "executable"
+			},
+			"uci": { "dockerd": true }
+		}
+	},
+
+	"admin/docker/overview": {
+		"title": "概况",
+		"order": 1,
+		"action": {
+			"type": "view",
+			"path": "dockerman/overview"
+		},
+		"depends": {
+			"acl": [ "luci-app-dockerman" ]
+		}
+	},
+
+	"admin/docker/configuration": {
+		"title": "配置",
+		"order": 2,
+		"action": {
+			"type": "view",
+			"path": "dockerman/configuration"
+		},
+		"depends": {
+			"acl": [ "luci-app-dockerman" ]
+		}
+	},
+
+	"admin/docker/containers": {
+		"title": "容器",
+		"order": 3,
+		"action": {
+			"type": "view",
+			"path": "dockerman/containers"
+		},
+		"depends": {
+			"acl": [ "luci-app-dockerman" ]
+		}
+	},
+
+	"admin/docker/images": {
+		"title": "镜像",
+		"order": 4,
+		"action": {
+			"type": "view",
+			"path": "dockerman/images"
+		}
+	},
+
+	"admin/docker/networks": {
+		"title": "网络",
+		"order": 5,
+		"action": {
+			"type": "view",
+			"path": "dockerman/networks"
+		},
+		"depends": {
+			"acl": [ "luci-app-dockerman" ]
+		}
+	},
+
+	"admin/docker/volumes": {
+		"title": "存储卷",
+		"order": 6,
+		"action": {
+			"type": "view",
+			"path": "dockerman/volumes"
+		},
+		"depends": {
+			"acl": [ "luci-app-dockerman" ]
+		}
+	},
+
+	"admin/docker/events": {
+		"title": "事件",
+		"order": 7,
+		"action": {
+			"type": "view",
+			"path": "dockerman/events"
+		},
+		"depends": {
+			"acl": [ "luci-app-dockerman" ]
+		}
+	}
+}
