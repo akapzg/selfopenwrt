@@ -201,4 +201,22 @@ if [ -x /etc/init.d/opt-mount ]; then
     /etc/init.d/opt-mount start
 fi
 
+# ------------------------------------------------------------------------------
+# 9. 下载与测速工具默认调优：Aria2 / qBittorrent 默认指向 /opt/downloads，FastNet 按需启动
+# ------------------------------------------------------------------------------
+if [ -f /etc/config/aria2 ]; then
+    uci set aria2.main.dir='/opt/downloads/aria2'
+    uci commit aria2
+fi
+
+if [ -f /etc/config/qbittorrent ]; then
+    uci set qbittorrent.config.download_dir='/opt/downloads/qbittorrent'
+    uci commit qbittorrent
+fi
+
+if [ -f /etc/config/fastnet ]; then
+    uci set fastnet.config.enabled='0'
+    uci commit fastnet
+fi
+
 exit 0

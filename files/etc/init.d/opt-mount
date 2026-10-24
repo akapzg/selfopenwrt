@@ -11,10 +11,16 @@ boot() {
     start
 }
 
+init_opt_dirs() {
+    mkdir -p /opt/docker /opt/downloads/aria2 /opt/downloads/qbittorrent
+    chmod 777 /opt/downloads /opt/downloads/aria2 /opt/downloads/qbittorrent 2>/dev/null || true
+    chown -R aria2:aria2 /opt/downloads/aria2 2>/dev/null || true
+}
+
 start() {
     # Skip if /opt is already a mounted partition
     if grep -q " /opt " /proc/mounts 2>/dev/null; then
-        mkdir -p /opt/docker
+        init_opt_dirs
         return 0
     fi
 
@@ -55,7 +61,10 @@ start() {
         fi
     fi
 
-    [ -z "$disk_dev" ] || [ ! -b "$disk_dev" ] && return 0
+    if [ -z "$disk_dev" ] || [ ! -b "$disk_dev" ]; then
+        init_opt_dirs
+        return 0
+    fi
 
     case "$disk_dev" in
         /dev/nvme*|/dev/mmcblk*|/dev/loop*) part_prefix="${disk_dev}p" ;;
@@ -103,7 +112,6 @@ start() {
         local opt_uuid=$(blkid -s UUID -o value "$opt_part" 2>/dev/null)
         mkdir -p /opt
         mount -t ext4 -o rw,noatime "$opt_part" /opt >/dev/null 2>&1 || true
-        mkdir -p /opt/docker
 
         if [ -n "$opt_uuid" ] && [ "$(uci -q get fstab.opt_data.uuid)" != "$opt_uuid" ]; then
             uci -q delete fstab.opt_data
@@ -116,4 +124,6 @@ start() {
             uci commit fstab
         fi
     fi
+
+    init_opt_dirs
 }
