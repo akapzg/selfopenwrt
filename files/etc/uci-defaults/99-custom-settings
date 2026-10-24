@@ -8,9 +8,11 @@
 . /lib/functions/uci-defaults.sh
 
 # ------------------------------------------------------------------------------
-# 1. 基础系统设置：管理 IP (192.168.100.1)、时区、Argon 主题、ZRAM
+# 1. 基础系统设置：管理 IP (192.168.100.1/24)、时区、Argon 主题、ZRAM
 # ------------------------------------------------------------------------------
+uci -q delete network.lan.ipaddr
 uci set network.lan.ipaddr='192.168.100.1'
+uci set network.lan.netmask='255.255.255.0'
 uci commit network
 
 uci set system.@system[0].timezone='CST-8'
