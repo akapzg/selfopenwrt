@@ -114,6 +114,15 @@ start() {
         mount -t ext4 -o rw,noatime "$opt_part" /opt >/dev/null 2>&1 || true
 
         if [ -n "$opt_uuid" ] && [ "$(uci -q get fstab.opt_data.uuid)" != "$opt_uuid" ]; then
+            if ! uci -q get fstab.@global[0] >/dev/null 2>&1; then
+                uci add fstab global >/dev/null 2>&1
+                uci set fstab.@global[0].anon_swap='0'
+                uci set fstab.@global[0].anon_mount='1'
+                uci set fstab.@global[0].auto_swap='1'
+                uci set fstab.@global[0].auto_mount='1'
+                uci set fstab.@global[0].delay_root='5'
+                uci set fstab.@global[0].check_fs='0'
+            fi
             uci -q delete fstab.opt_data
             uci set fstab.opt_data='mount'
             uci set fstab.opt_data.uuid="$opt_uuid"

@@ -195,8 +195,17 @@ if [ -f /etc/config/nginx ]; then
 fi
 
 # ------------------------------------------------------------------------------
-# 8. 启用并立即执行早期 /opt 自动分区与 OTA 无损恢复服务 (START=18，早于 Docker)
+# 8. 启用并立即执行早期 /opt 自动分区与 OTA 无损恢复服务 + 外置存储即插即自动挂载
 # ------------------------------------------------------------------------------
+if ! uci -q get fstab.@global[0] >/dev/null 2>&1; then
+    uci add fstab global >/dev/null 2>&1
+fi
+uci set fstab.@global[0].anon_swap='0'
+uci set fstab.@global[0].anon_mount='1'
+uci set fstab.@global[0].auto_swap='1'
+uci set fstab.@global[0].auto_mount='1'
+uci commit fstab
+
 if [ -x /etc/init.d/opt-mount ]; then
     /etc/init.d/opt-mount enable
     /etc/init.d/opt-mount start
