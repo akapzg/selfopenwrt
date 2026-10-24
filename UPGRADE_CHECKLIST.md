@@ -66,7 +66,7 @@
    - 在 `make defconfig` 之后强制扫描 `.config`：
      - 若存在任何 `CONFIG_PACKAGE_iptables*=y` 或 `CONFIG_PACKAGE_ip6tables*=y` -> **立即报错终止**；
      - 若存在 `CONFIG_PACKAGE_uhttpd=y` -> **立即报错终止**；
-     - 若核心定制包（`luci-nginx`、`luci-app-dockerman`、`luci-app-tailscale`、`luci-app-mosdns`、`luci-app-nikki`、`luci-app-homeproxy`、`luci-app-quickfile`、`luci-app-ota`、`luci-app-cpufreq`）缺失 -> **立即报错终止**。
+     - 自动遍历 `configs/${model}.config` 与 `configs/common.config` 中的每一项 `CONFIG_PACKAGE_*=y`，若有任何一个软件包在 `make defconfig` 后被丢弃（保留率不足 100%）-> **立即报错终止并打印被丢弃的包名**。
 
 ---
 
@@ -89,3 +89,51 @@ cat /mnt/c/Users/thepz/OneDrive/Documents/VScode/openwrt/configs/common.config >
 make defconfig
 grep -E '^CONFIG_PACKAGE_(ip6?tables|uhttpd).*=y' .config || echo "预检通过：零 iptables、零 uhttpd！"
 ```
+
+---
+
+## 五、如何增减内置软件包与新增其他设备固件
+
+### 1. 增加或删除内置软件包
+
+#### 情况 A：ImmortalWrt 官方源已有的软件包（只需改 1 个文件）
+- **所有设备共用**：打开 [`configs/common.config`](configs/common.config)，在末尾添加：
+  ```ini
+  CONFIG_PACKAGE_luci-app-xxx=y
+  ```
+- **仅单台设备专用**（例如某款网卡驱动）：添加到 [`configs/x86_64.config`](configs/x86_64.config) 或 [`configs/nanopi-r5s.config`](configs/nanopi-r5s.config) 末尾。
+- **删除某个内置插件**：直接从 [`configs/common.config`](configs/common.config) 中删除对应的 `CONFIG_PACKAGE_...=y` 行即可。
+
+#### 情况 B：第三方 GitHub 独立插件（官方源中没有的包，只需 2 步）
+1. 将插件源码文件夹放入 [`packages/<插件名>`](packages) 目录下（[`scripts/diy.sh`](scripts/diy.sh) 在编译时会自动把 `packages/*` 全部复制到 `package/new/` 参与编译；如需后续支持一键同步，可在 [`.github/workflows/sync-packages.yml`](.github/workflows/sync-packages.yml) 中加一行 `sync_repo "https://github.com/作者/仓库.git" "分支" "<插件名>"`）。
+2. 在 [`configs/common.config`](configs/common.config) 末尾添加：
+   ```ini
+   CONFIG_PACKAGE_luci-app-xxx=y
+   ```
+
+---
+
+### 2. 新增其他设备的固件（只需 2 步，自动继承全部 28 款插件与系统优化）
+
+由于本项目将 **硬件底层（`configs/<设备名>.config`）** 与 **公共插件层（[`configs/common.config`](configs/common.config)）** 完全解耦，新增一台设备（例如 `NanoPi R6S` 或其他 ARM/x86 路由）只需 2 步：
+
+1. **新建 `configs/<设备名>.config`**（如 `configs/nanopi-r6s.config`）：
+   参照 [`configs/nanopi-r5s.config`](configs/nanopi-r5s.config)，写入目标架构、设备型号与硬件专属驱动：
+   ```ini
+   CONFIG_TARGET_rockchip=y
+   CONFIG_TARGET_rockchip_armv8=y
+   CONFIG_TARGET_MULTI_PROFILE=y
+   CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_friendlyarm_nanopi-r6s=y
+
+   CONFIG_TARGET_KERNEL_PARTSIZE=32
+   CONFIG_TARGET_ROOTFS_PARTSIZE=2048
+   CONFIG_TARGET_ROOTFS_SQUASHFS=y
+   CONFIG_TARGET_ROOTFS_EXT4FS=y
+   CONFIG_TARGET_IMAGES_GZIP=y
+
+   CONFIG_PACKAGE_autocore=y
+   CONFIG_PACKAGE_kmod-r8125=y
+   ```
+2. **在 [`.github/workflows/build.yml`](.github/workflows/build.yml) 中注册新设备**：
+   - 在 `matrix.model` 列表下增加 `- nanopi-r6s`（编译时会自动将 `configs/nanopi-r6s.config` 与 [`configs/common.config`](configs/common.config) 合并，自动拥有全部 28 款插件、纯 `fw4` 防火墙、Nginx、`/opt` 自动挂载与 `192.168.100.1` 配置）；
+   - 在 `Collect Firmware Artifacts & Generate OTA Metadata` 步骤中增加对应的固件收集与 `ota_<设备名>.json` 生成条目即可。
