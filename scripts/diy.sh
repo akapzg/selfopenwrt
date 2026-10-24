@@ -86,7 +86,7 @@ mkdir -p package/new
 cp -rf "$WORKSPACE_DIR/packages/"* package/new/
 rm -rf package/new/nikki/mihomo-alpha
 find package/new -type f -exec sed -i 's/\r$//' {} +
-chmod 0755 package/new/fastnet/fastnet/files/* package/new/luci-app-lan-scanner/root/usr/libexec/* 2>/dev/null || true
+chmod 0755 package/new/fastnet/fastnet/files/* package/new/luci-app-lan-scanner/root/usr/libexec/* package/new/luci-app-usb-writer/root/usr/libexec/* 2>/dev/null || true
 
 # Ensure luci-app-tailscale always enforces --netfilter-mode=off even after upstream sync
 if [ -f package/new/luci-app-tailscale/root/etc/init.d/tailscale ]; then
