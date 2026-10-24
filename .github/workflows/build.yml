@@ -120,7 +120,18 @@ jobs:
           cat "$GITHUB_WORKSPACE/builder-repo/configs/common.config" >> .config
           make defconfig
 
-          # 对齐官方内核 vermagic 以提升官方源 kmod 兼容性，并写入 BUILD_DATE 供 OTA 比对
+          # 对齐官方内核 vermagic（使编译出的固件可直接通过 apk 安装官方源中的所有 kmod-* 内核模块），并写入 BUILD_DATE 供 OTA 比对
+          rel_ver="${{ needs.check-upstream.outputs.target_tag }}"
+          rel_ver="${rel_ver#v}"
+          if [ "${{ matrix.model }}" = "x86_64" ]; then
+            vermagic=$(curl -sL "https://downloads.immortalwrt.org/releases/${rel_ver}/targets/x86/64/immortalwrt-${rel_ver}-x86-64.manifest" | sed -n 's/^kernel - .*~\([0-9a-f]\{32\}\)-.*/\1/p' | head -n1)
+          else
+            vermagic=$(curl -sL "https://downloads.immortalwrt.org/releases/${rel_ver}/targets/rockchip/armv8/immortalwrt-${rel_ver}-rockchip-armv8.manifest" | sed -n 's/^kernel - .*~\([0-9a-f]\{32\}\)-.*/\1/p' | head -n1)
+          fi
+          if [ -n "$vermagic" ]; then
+            echo ">>> Aligning kernel vermagic with official ImmortalWrt ${rel_ver}: $vermagic"
+            sed -i "s/grep '=\[ym\]'.*> \$(LINUX_DIR)\/\.vermagic/echo '$vermagic' > \$(LINUX_DIR)\/.vermagic/" include/kernel-defaults.mk
+          fi
           sed -i "/BUILD_DATE/d" package/base-files/files/usr/lib/os-release
           echo "BUILD_DATE=\"${{ needs.check-upstream.outputs.build_date }}\"" >> package/base-files/files/usr/lib/os-release
 
