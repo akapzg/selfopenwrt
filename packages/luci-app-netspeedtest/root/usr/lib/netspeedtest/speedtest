@@ -1,0 +1,27 @@
+#!/bin/sh
+
+selected_id=${1}
+
+export HOME='/etc/speedtest'
+SPEEDTEST_CLI='/usr/bin/speedtest'
+SPEEDTEST_RESULT='/etc/speedtest/speedtest_result'
+
+pgrep -fx "$SPEEDTEST_CLI" && exit 1
+
+echo "Testing" > "$SPEEDTEST_RESULT"
+
+if [ -z "$selected_id" ] || [ "$selected_id" = "0" ]; then
+    output=$($SPEEDTEST_CLI --accept-gdpr --accept-license --progress=no 2>&1)
+else
+    output=$($SPEEDTEST_CLI --accept-gdpr --accept-license --progress=no -s "$selected_id" 2>&1)
+fi
+
+url=$(echo "$output" | grep "Result URL" | awk '{print $NF}')
+
+if [ -n "$url" ]; then
+    echo "$url" > "$SPEEDTEST_RESULT"
+else
+    echo "Test failed" > "$SPEEDTEST_RESULT"
+fi
+
+echo "$output"

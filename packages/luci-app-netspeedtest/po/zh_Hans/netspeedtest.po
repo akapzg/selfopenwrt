@@ -1,0 +1,65 @@
+msgid "iPerf3 Server"
+msgstr "iPerf3 服务器"
+
+msgid "iPerf3 Bandwidth Performance Test"
+msgstr "iPerf3 带宽性能测试"
+
+msgid "iPerf3 Common commands reference"
+msgstr "iPerf3 常用命令参考"
+
+msgid "iPerf3 is a tool for active measurements of the maximum achievable bandwidth on IP networks."
+msgstr "iPerf3 是一种主动测量 IP 网络最大可达带宽的工具。"
+
+msgid "Collecting data ..."
+msgstr "正在收集数据..."
+
+msgid "NOT RUNNING"
+msgstr "未运行"
+
+msgid "RUNNING"
+msgstr "运行中"
+
+msgid "Enable"
+msgstr "启用"
+
+msgid "No result."
+msgstr "无结果..."
+
+msgid "Speedtest by Ookla"
+msgstr ""
+
+msgid "SpeedTest"
+msgstr "网速测试"
+
+msgid "Internet Speedtest"
+msgstr "互联网测速"
+
+msgid "Speedtest Node"
+msgstr "测速节点"
+
+msgid "Default"
+msgstr "默认"
+
+msgid "Fetch Nodes"
+msgstr "获取节点"
+
+msgid "JSON parse failed"
+msgstr "JSON 解析失败"
+
+msgid "Dropdown DOM node not found"
+msgstr "找不到下拉框 DOM 节点"
+
+msgid "Nodes fetched successfully"
+msgstr "节点获取成功"
+
+msgid "Node fetch failed: "
+msgstr "节点获取失败："
+
+msgid "Start Test"
+msgstr "开始测试"
+
+msgid "Test failed."
+msgstr "测试失败..."
+
+msgid "Testing in progress..."
+msgstr "测试进行中..."

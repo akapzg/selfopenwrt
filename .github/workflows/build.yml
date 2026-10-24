@@ -1,0 +1,233 @@
+name: Build ImmortalWrt Firmware (x86_64 & NanoPi R5S)
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: '强制编译（即使当前正式版已发布过 Release）'
+        required: false
+        default: true
+        type: boolean
+      custom_tag:
+        description: '指定 ImmortalWrt 版本 Tag 或分支（留空则自动获取最新 v25.12.* 正式版）'
+        required: false
+        default: ''
+        type: string
+  schedule:
+    # 每天北京时间 04:00 (UTC 20:00) 自动巡检上游 ImmortalWrt 是否有新正式版发布
+    - cron: '0 20 * * *'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  # ============================================================================
+  # Job 1: 巡检上游 ImmortalWrt 最新 v25.12.* 正式版 Tag（耗时约 5 秒）
+  # ============================================================================
+  check-upstream:
+    name: Check Upstream Release
+    runs-on: ubuntu-24.04
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+      target_tag: ${{ steps.check.outputs.target_tag }}
+      build_date: ${{ steps.check.outputs.build_date }}
+    steps:
+      - name: Check latest ImmortalWrt v25.12 release tag
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CUSTOM_TAG: ${{ github.event.inputs.custom_tag }}
+          FORCE_BUILD: ${{ github.event.inputs.force_build }}
+        run: |
+          sudo timedatectl set-timezone 'Asia/Shanghai'
+          build_date=$(date +%s)
+          echo "build_date=$build_date" >> "$GITHUB_OUTPUT"
+
+          if [ -n "$CUSTOM_TAG" ]; then
+            latest_tag="$CUSTOM_TAG"
+          else
+            # 获取上游 immortalwrt/immortalwrt 最新 v25.12.* 正式版 Tag（排除 -rc 预览版）
+            latest_tag=$(git ls-remote --tags --refs https://github.com/immortalwrt/immortalwrt.git "refs/tags/v25.12.*" \
+              | awk -F'refs/tags/' '{print $2}' \
+              | grep -v '\-rc' \
+              | sort -V \
+              | tail -n1)
+            # 若未匹配到则回退至 openwrt-25.12 分支
+            [ -z "$latest_tag" ] && latest_tag="openwrt-25.12"
+          fi
+
+          echo "Detected upstream target version: $latest_tag"
+          echo "target_tag=$latest_tag" >> "$GITHUB_OUTPUT"
+
+          # 检查本仓库是否已存在该版本的 Release
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "$FORCE_BUILD" = "true" ]; then
+            echo "Manual force build triggered."
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          elif gh release view "$latest_tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release $latest_tag already exists in ${{ github.repository }}. Skipping build."
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "New upstream release $latest_tag detected! Triggering build..."
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ============================================================================
+  # Job 2: 并发编译 x86_64 与 NanoPi R5S 固件
+  # ============================================================================
+  build:
+    name: Build ${{ matrix.model }} (${{ needs.check-upstream.outputs.target_tag }})
+    needs: check-upstream
+    if: needs.check-upstream.outputs.should_build == 'true'
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        model:
+          - x86_64
+          - nanopi-r5s
+
+    steps:
+      - name: Checkout Builder Repository
+        uses: actions/checkout@v4
+        with:
+          path: builder-repo
+
+      - name: Free Disk Space & Setup Build Environment
+        run: |
+          sudo timedatectl set-timezone 'Asia/Shanghai'
+          sudo rm -rf /usr/share/dotnet /etc/mysql /etc/php /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo apt-get update -y
+          sudo apt-get install -y build-essential clang flex bison g++ gawk \
+            gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
+            python3-setuptools python3-pyelftools rsync swig unzip zlib1g-dev \
+            file wget curl jq parted gdisk zstd ccache
+
+      - name: Clone ImmortalWrt Source (${{ needs.check-upstream.outputs.target_tag }})
+        run: |
+          git clone --depth=1 -b "${{ needs.check-upstream.outputs.target_tag }}" \
+            https://github.com/immortalwrt/immortalwrt.git openwrt
+          cd openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Run DIY Customization & Generate .config
+        run: |
+          cd openwrt
+          bash "$GITHUB_WORKSPACE/builder-repo/scripts/diy.sh" "${{ github.repository }}"
+
+          cat "$GITHUB_WORKSPACE/builder-repo/configs/${{ matrix.model }}.config" > .config
+          cat "$GITHUB_WORKSPACE/builder-repo/configs/common.config" >> .config
+          make defconfig
+
+          # 对齐官方内核 vermagic 以提升官方源 kmod 兼容性，并写入 BUILD_DATE 供 OTA 比对
+          sed -i "/BUILD_DATE/d" package/base-files/files/usr/lib/os-release
+          echo "BUILD_DATE=\"${{ needs.check-upstream.outputs.build_date }}\"" >> package/base-files/files/usr/lib/os-release
+
+      - name: Download Package Sources (make download)
+        run: |
+          cd openwrt
+          make download -j$(nproc)
+          find dl -size -1024c -exec ls -l {} \;
+          find dl -size -1024c -exec rm -f {} \;
+
+      - name: Compile Firmware
+        run: |
+          cd openwrt
+          make -j$(($(nproc) + 1)) || make -j1 V=s
+
+      - name: Collect Firmware Artifacts & Generate OTA Metadata
+        run: |
+          mkdir -p artifact
+          if [ "${{ matrix.model }}" = "x86_64" ]; then
+            cp -a openwrt/bin/targets/x86/64/*-combined-efi.img.gz artifact/
+            cp -a openwrt/bin/targets/x86/64/*.manifest artifact/x86_64.manifest
+            cp -a openwrt/bin/targets/x86/64/config.buildinfo artifact/x86_64.config.buildinfo
+            sq_file=$(basename $(ls artifact/*-squashfs-combined-efi.img.gz | head -n1))
+            sq_sha256=$(sha256sum "artifact/$sq_file" | awk '{print $1}')
+            cat > artifact/ota_x86_64.json <<EOF
+          {
+            "x86_64": [
+              {
+                "build_date": "${{ needs.check-upstream.outputs.build_date }}",
+                "sha256sum": "$sq_sha256",
+                "url": "https://gh-proxy.com/https://github.com/${{ github.repository }}/releases/latest/download/$sq_file"
+              }
+            ]
+          }
+          EOF
+          elif [ "${{ matrix.model }}" = "nanopi-r5s" ]; then
+            cp -a openwrt/bin/targets/rockchip/armv8/*-sysupgrade.img.gz artifact/
+            cp -a openwrt/bin/targets/rockchip/armv8/*.manifest artifact/nanopi-r5s.manifest
+            cp -a openwrt/bin/targets/rockchip/armv8/config.buildinfo artifact/nanopi-r5s.config.buildinfo
+            r5s_file=$(basename $(ls artifact/*-r5s-squashfs-sysupgrade.img.gz | head -n1))
+            r5s_sha256=$(sha256sum "artifact/$r5s_file" | awk '{print $1}')
+            r5c_file=$(basename $(ls artifact/*-r5c-squashfs-sysupgrade.img.gz | head -n1))
+            r5c_sha256=$(sha256sum "artifact/$r5c_file" | awk '{print $1}')
+            cat > artifact/ota_nanopi-r5s.json <<EOF
+          {
+            "friendlyarm,nanopi-r5s": [
+              {
+                "build_date": "${{ needs.check-upstream.outputs.build_date }}",
+                "sha256sum": "$r5s_sha256",
+                "url": "https://gh-proxy.com/https://github.com/${{ github.repository }}/releases/latest/download/$r5s_file"
+              }
+            ],
+            "friendlyarm,nanopi-r5c": [
+              {
+                "build_date": "${{ needs.check-upstream.outputs.build_date }}",
+                "sha256sum": "$r5c_sha256",
+                "url": "https://gh-proxy.com/https://github.com/${{ github.repository }}/releases/latest/download/$r5c_file"
+              }
+            ]
+          }
+          EOF
+          fi
+          cd artifact && sha256sum *.img.gz > sha256sums_${{ matrix.model }}.txt
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.model }}
+          path: artifact/*
+
+  # ============================================================================
+  # Job 3: 合并生成统一 ota.json 并发布至 GitHub Releases
+  # ============================================================================
+  release:
+    name: Publish Release & OTA JSON
+    needs: [check-upstream, build]
+    if: needs.check-upstream.outputs.should_build == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download All Firmware Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-files
+          merge-multiple: true
+
+      - name: Merge OTA JSON & Checksums
+        run: |
+          cd release-files
+          jq -s 'add' ota_*.json > ota.json
+          rm -f ota_*.json
+          cat sha256sums_*.txt > sha256sums.txt
+          rm -f sha256sums_*.txt
+          echo "Generated unified ota.json:"
+          cat ota.json
+
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.check-upstream.outputs.target_tag }}
+          name: ImmortalWrt ${{ needs.check-upstream.outputs.target_tag }} (x86_64 & NanoPi R5S)
+          make_latest: true
+          body: |
+            ### 固件信息
+            - **上游版本**：ImmortalWrt `${{ needs.check-upstream.outputs.target_tag }}`
+            - **支持设备**：`x86_64` & `FriendlyARM NanoPi R5S / R5C`
+            - **默认后台**：`http://192.168.100.1`（用户 `root`，默认无密码）
+            - **系统分区**：`2048MB (2GB)`，支持 `SquashFS` 固件重置与在线 OTA 升级
+            - **自动挂载**：首次开机自动将剩余磁盘空间新建第 3 分区 (`DOCKER_DATA`) 挂载至 `/opt`，OTA 升级后自动无损找回
+          files: |
+            release-files/*

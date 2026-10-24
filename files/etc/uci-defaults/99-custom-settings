@@ -1,0 +1,275 @@
+#!/bin/sh
+# ==============================================================================
+# Custom First-Boot Initialization Script (99-custom-settings)
+# Target: x86_64 & NanoPi R5S (ImmortalWrt 25.12)
+# ==============================================================================
+
+. /etc/os-release
+. /lib/functions/uci-defaults.sh
+
+# ------------------------------------------------------------------------------
+# 1. 基础系统设置：管理 IP (192.168.100.1)、时区、Argon 主题、ZRAM
+# ------------------------------------------------------------------------------
+uci set network.lan.ipaddr='192.168.100.1'
+uci commit network
+
+uci set system.@system[0].timezone='CST-8'
+uci set system.@system[0].zonename='Asia/Shanghai'
+uci set system.@system[0].conloglevel='1'
+uci set system.@system[0].cronloglevel='9'
+
+# ZRAM (25% 物理内存, lz4 算法)
+mem_total=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+zram_size=$(awk "BEGIN {print int($mem_total*0.25/1024)}")
+uci set system.@system[0].zram_size_mb="$zram_size"
+uci set system.@system[0].zram_comp_algo='lz4'
+uci commit system
+
+if [ -d "/www/luci-static/argon" ]; then
+    uci set luci.main.mediaurlbase='/luci-static/argon'
+    uci set luci.main.pollinterval='3'
+    uci commit luci
+fi
+
+# ------------------------------------------------------------------------------
+# 2. x86_64 网口顺序：eth0 固定为 WAN，其余网口 (eth1..ethN) 全部桥接至 br-lan
+#    (NanoPi R5S 已由原生 02_network 固定 eth0=WAN, eth1/eth2=LAN1/LAN2)
+# ------------------------------------------------------------------------------
+if [ "$(uname -m)" = "x86_64" ]; then
+    eth_list=$(ls /sys/class/net | grep -E '^eth[0-9]+$' | sort -V)
+    eth_count=$(echo "$eth_list" | wc -w)
+    if [ "$eth_count" -gt 1 ]; then
+        lan_ifaces=$(echo "$eth_list" | grep -v '^eth0$' | tr '\n' ' ' | sed 's/ $//')
+        uci -q delete network.@device[0].ports
+        for iface in $lan_ifaces; do
+            uci add_list network.@device[0].ports="$iface"
+        done
+        uci set network.wan.device='eth0'
+        uci set network.wan6.device='eth0'
+        uci commit network
+    fi
+fi
+
+# ------------------------------------------------------------------------------
+# 3. IPv6 寻址模式治理：纯 SLAAC + 抑制 RDNSS 广播（防地址漂移与 DNS 抢答泄漏）
+# ------------------------------------------------------------------------------
+# 切换为纯 SLAAC（移除 managed-config 与有状态 DHCPv6，使 NAS/PC 保持固定 EUI-64 后缀）
+uci -q delete dhcp.lan.dhcpv6
+uci -q delete dhcp.lan.ra_flags
+uci add_list dhcp.lan.ra_flags='none'
+uci set dhcp.lan.ra='server'
+uci set dhcp.lan.ra_slaac='1'
+
+# 关闭 IPv6 DNS 通告（强制内网仅使用 IPv4 192.168.100.1#53 解析，防绕过代理与污染）
+uci set dhcp.lan.dns_service='0'
+uci set dhcp.lan.ra_dns='0'
+uci commit dhcp
+
+# ------------------------------------------------------------------------------
+# 4. 防火墙全局加速：开启原生软件流量卸载 (Flow Offloading) + FullCone NAT
+# ------------------------------------------------------------------------------
+uci set firewall.@defaults[0].flow_offloading='1'
+uci set firewall.@defaults[0].fullcone='1'
+uci set firewall.@defaults[0].fullcone6='1'
+uci commit firewall
+
+# ------------------------------------------------------------------------------
+# 5. Docker 与防火墙 (fw4 / nftables) 100% 解耦（严禁穿透防火墙、无规则混用）
+# ------------------------------------------------------------------------------
+if [ -f /etc/config/dockerd ]; then
+    # 禁止 Docker 私自接管 iptables/nftables，数据目录固定至 /opt/docker/
+    uci set dockerd.globals.iptables='0'
+    uci set dockerd.globals.ip6tables='0'
+    uci set dockerd.globals.nftables='0'
+    uci set dockerd.globals.data_root='/opt/docker/'
+    if [ $(grep -c daocloud.io /etc/config/dockerd) -eq '0' ]; then
+        uci add_list dockerd.globals.registry_mirrors='https://docker.m.daocloud.io'
+    fi
+    uci commit dockerd
+fi
+
+# 创建 docker0 独立桥接设备与 network.docker 接口
+uci -q delete network.docker
+uci set network.docker='interface'
+uci set network.docker.device='docker0'
+uci set network.docker.proto='none'
+uci set network.docker.auto='0'
+uci commit network
+
+# 创建专属 firewall.docker 区域（不混入 lan 区域）
+uci -q delete firewall.docker
+uci set firewall.docker='zone'
+uci set firewall.docker.name='docker'
+uci set firewall.docker.input='ACCEPT'
+uci set firewall.docker.output='ACCEPT'
+uci set firewall.docker.forward='ACCEPT'
+uci add_list firewall.docker.network='docker'
+
+# 允许 docker -> wan (出站上网) 与 docker <-> lan (内网互访)，严禁 wan -> docker 穿透
+uci -q delete firewall.docker_wan
+uci set firewall.docker_wan='forwarding'
+uci set firewall.docker_wan.src='docker'
+uci set firewall.docker_wan.dest='wan'
+
+uci -q delete firewall.docker_lan
+uci set firewall.docker_lan='forwarding'
+uci set firewall.docker_lan.src='docker'
+uci set firewall.docker_lan.dest='lan'
+
+uci -q delete firewall.lan_docker
+uci set firewall.lan_docker='forwarding'
+uci set firewall.lan_docker.src='lan'
+uci set firewall.lan_docker.dest='docker'
+
+# 容器网段 (172.16.0.0/12) 全局出口 MASQUERADE 伪装为路由器对应接口 IP (src='*')
+uci -q delete firewall.srcnat_docker
+uci set firewall.srcnat_docker='nat'
+uci set firewall.srcnat_docker.name='Docker-MASQUERADE'
+uci set firewall.srcnat_docker.family='ipv4'
+uci add_list firewall.srcnat_docker.proto='all'
+uci set firewall.srcnat_docker.src='*'
+uci set firewall.srcnat_docker.src_ip='172.16.0.0/12'
+uci set firewall.srcnat_docker.target='MASQUERADE'
+uci commit firewall
+
+# ------------------------------------------------------------------------------
+# 6. Tailscale 接口与防火墙由 fw4 100% 纯净接管（--netfilter-mode=off）
+# ------------------------------------------------------------------------------
+if [ -f /etc/config/tailscale ]; then
+    uci set tailscale.settings.fw_mode='off'
+    uci commit tailscale
+fi
+
+# 创建 network.tailscale 接口（绑定 tailscale0）
+uci -q delete network.tailscale
+uci set network.tailscale='interface'
+uci set network.tailscale.proto='none'
+uci set network.tailscale.device='tailscale0'
+uci commit network
+
+# 创建专属 firewall.tailscale 区域（开启 MASQUERADE 与 MSS 钳制）
+uci -q delete firewall.tailscale
+uci set firewall.tailscale='zone'
+uci set firewall.tailscale.name='tailscale'
+uci add_list firewall.tailscale.network='tailscale'
+uci set firewall.tailscale.input='ACCEPT'
+uci set firewall.tailscale.output='ACCEPT'
+uci set firewall.tailscale.forward='ACCEPT'
+uci set firewall.tailscale.masq='1'
+uci set firewall.tailscale.mtu_fix='1'
+
+# 允许 tailscale <-> lan 双向互访 + tailscale -> wan (Exit Node 出口节点支持)
+uci -q delete firewall.ts_lan
+uci set firewall.ts_lan='forwarding'
+uci set firewall.ts_lan.src='tailscale'
+uci set firewall.ts_lan.dest='lan'
+
+uci -q delete firewall.lan_ts
+uci set firewall.lan_ts='forwarding'
+uci set firewall.lan_ts.src='lan'
+uci set firewall.lan_ts.dest='tailscale'
+
+uci -q delete firewall.ts_wan
+uci set firewall.ts_wan='forwarding'
+uci set firewall.ts_wan.src='tailscale'
+uci set firewall.ts_wan.dest='wan'
+uci commit firewall
+
+# ------------------------------------------------------------------------------
+# 7. Nginx WebUI 配置调优（监听 80 端口，关闭访问日志保护闪存）
+# ------------------------------------------------------------------------------
+if [ -f /etc/config/nginx ]; then
+    uci set nginx.global.uci_enable='true'
+    uci -q del nginx._lan
+    uci -q del nginx._redirect2ssl
+    uci add nginx server
+    uci rename nginx.@server[-1]='_lan'
+    uci set nginx._lan.server_name='_lan'
+    uci add_list nginx._lan.listen='80 default_server'
+    uci add_list nginx._lan.listen='[::]:80 default_server'
+    uci add_list nginx._lan.include='conf.d/*.locations'
+    uci set nginx._lan.access_log='off; # logd openwrt'
+    uci commit nginx
+fi
+
+# ------------------------------------------------------------------------------
+# 8. 自动扩容/无损找回剩余磁盘空间并挂载至 /opt (供 Docker / OpenList / qB 使用)
+# ------------------------------------------------------------------------------
+auto_mount_opt() {
+    # 1. 查找当前根分区所在的物理磁盘 (支持 sda / nvme0n1 / mmcblk0 / vda)
+    local root_dev=$(sed -n 's/.*root=\([^ ]*\).*/\1/p' /proc/cmdline)
+    local disk_dev=""
+    local part_prefix=""
+
+    case "$root_dev" in
+        /dev/nvme*n*p*|/dev/mmcblk*p*|/dev/loop*p*)
+            disk_dev=$(echo "$root_dev" | sed 's/p[0-9]*$//')
+            part_prefix="${disk_dev}p"
+            ;;
+        /dev/sd*[0-9]|/dev/vd*[0-9])
+            disk_dev=$(echo "$root_dev" | sed 's/[0-9]*$//')
+            part_prefix="${disk_dev}"
+            ;;
+    esac
+
+    # 若 cmdline 为 PARTUUID，则通过 /dev/root 或挂载表反查第 2 分区
+    if [ -z "$disk_dev" ] || [ ! -b "$disk_dev" ]; then
+        local p2_dev=$(lsblk -ndo PKNAME $(findmnt -n -o SOURCE /rom 2>/dev/null || findmnt -n -o SOURCE / 2>/dev/null) 2>/dev/null | head -n1)
+        if [ -n "$p2_dev" ] && [ -b "/dev/$p2_dev" ]; then
+            disk_dev="/dev/$p2_dev"
+            case "$disk_dev" in
+                /dev/nvme*|/dev/mmcblk*) part_prefix="${disk_dev}p" ;;
+                *) part_prefix="${disk_dev}" ;;
+            esac
+        fi
+    fi
+
+    [ -z "$disk_dev" ] || [ ! -b "$disk_dev" ] && return 0
+
+    local opt_part="${part_prefix}3"
+
+    # 2. 若第 3 分区不存在（全新刷机或 OTA 升级覆盖了前部 GPT 表），紧贴第 2 分区末尾重建第 3 分区框
+    if [ ! -b "$opt_part" ] && command -v parted >/dev/null 2>&1; then
+        # 修复 GPT 备份表到磁盘末尾
+        sgdisk -e "$disk_dev" >/dev/null 2>&1 || true
+        # 获取第 2 分区结束位置 (MiB)
+        local p2_end=$(parted -s "$disk_dev" unit MiB print 2>/dev/null | awk '/^ 2 / {gsub("MiB","",$3); print int($3)+1}')
+        local disk_end=$(parted -s "$disk_dev" unit MiB print 2>/dev/null | awk '/^Disk \/dev\// {gsub("MiB","",$3); print int($3)}')
+        if [ -n "$p2_end" ] && [ -n "$disk_end" ] && [ $((disk_end - p2_end)) -gt 1024 ]; then
+            # 仅在分区表登记第 3 分区边界，不擦除已有文件系统数据
+            parted -s "$disk_dev" unit MiB mkpart primary ext4 "${p2_end}MiB" 100% >/dev/null 2>&1 || true
+            partprobe "$disk_dev" >/dev/null 2>&1 || true
+            sleep 2
+        fi
+    fi
+
+    # 3. 检查第 3 分区文件系统：若有 DOCKER_DATA 标签则直接无损找回，否则首次格式化为 ext4
+    if [ -b "$opt_part" ]; then
+        local fs_label=$(blkid -s LABEL -o value "$opt_part" 2>/dev/null)
+        local fs_type=$(blkid -s TYPE -o value "$opt_part" 2>/dev/null)
+        if [ "$fs_label" != "DOCKER_DATA" ] && [ "$fs_type" != "ext4" ]; then
+            mkfs.ext4 -F -L "DOCKER_DATA" "$opt_part" >/dev/null 2>&1
+        else
+            e2fsck -y "$opt_part" >/dev/null 2>&1 || true
+        fi
+
+        local opt_uuid=$(blkid -s UUID -o value "$opt_part" 2>/dev/null)
+        mkdir -p /opt
+        if [ -n "$opt_uuid" ]; then
+            uci -q delete fstab.opt_data
+            uci set fstab.opt_data='mount'
+            uci set fstab.opt_data.uuid="$opt_uuid"
+            uci set fstab.opt_data.target='/opt'
+            uci set fstab.opt_data.enabled='1'
+            uci set fstab.opt_data.options='rw,noatime'
+            uci set fstab.opt_data.enabled_fsck='1'
+            uci commit fstab
+            mount "$opt_part" /opt >/dev/null 2>&1 || /etc/init.d/fstab restart
+            mkdir -p /opt/docker
+        fi
+    fi
+}
+
+auto_mount_opt
+
+exit 0
