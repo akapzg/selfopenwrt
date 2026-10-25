@@ -191,34 +191,55 @@ jobs:
       - name: Collect Firmware Artifacts & Generate OTA Metadata
         run: |
           mkdir -p artifact
+          date_tag=$(date -d "@${{ needs.check-upstream.outputs.build_date }}" +'%Y%m%d')
+          tag_name="${{ needs.check-upstream.outputs.target_tag }}"
+
           if [ "${{ matrix.model }}" = "x86_64" ]; then
-            cp -a openwrt/bin/targets/x86/64/*-combined-efi.img.gz artifact/
+            # 复制 SquashFS 镜像并按标准规范重命名
+            src_file=$(ls openwrt/bin/targets/x86/64/*-squashfs-combined-efi.img.gz | head -n1)
+            sq_file="immortalwrt-${tag_name}-${date_tag}-x86-64-generic-squashfs-combined-efi.img.gz"
+            cp -a "$src_file" "artifact/$sq_file"
+
+            # 若未来需要 ext4 格式，取消以下注释即可：
+            # src_ext4=$(ls openwrt/bin/targets/x86/64/*-ext4-combined-efi.img.gz 2>/dev/null | head -n1 || true)
+            # [ -n "$src_ext4" ] && [ -f "$src_ext4" ] && cp -a "$src_ext4" "artifact/immortalwrt-${tag_name}-${date_tag}-x86-64-generic-ext4-combined-efi.img.gz"
+
             cp -a openwrt/bin/targets/x86/64/*.manifest artifact/x86_64.manifest
             cp -a openwrt/bin/targets/x86/64/config.buildinfo artifact/x86_64.config.buildinfo
-            sq_file=$(basename $(ls artifact/*-squashfs-combined-efi.img.gz | head -n1))
             sq_sha256=$(sha256sum "artifact/$sq_file" | awk '{print $1}')
             jq -n \
-              --arg ver "${{ needs.check-upstream.outputs.target_tag }}" \
+              --arg ver "${tag_name}" \
               --arg bd "${{ needs.check-upstream.outputs.build_date }}" \
               --arg sha "$sq_sha256" \
               --arg url "https://gh-proxy.com/https://github.com/${{ github.repository }}/releases/latest/download/$sq_file" \
               '{"x86_64": [{"version": $ver, "build_date": $bd, "sha256sum": $sha, "url": $url}]}' > artifact/ota_x86_64.json
           elif [ "${{ matrix.model }}" = "nanopi-r5s" ]; then
-            cp -a openwrt/bin/targets/rockchip/armv8/*-sysupgrade.img.gz artifact/
+            # 复制 NanoPi R5S SquashFS 镜像并按标准规范重命名
+            src_r5s=$(ls openwrt/bin/targets/rockchip/armv8/*-r5s-squashfs-sysupgrade.img.gz | head -n1)
+            r5s_file="immortalwrt-${tag_name}-${date_tag}-nanopi-r5s-squashfs-sysupgrade.img.gz"
+            cp -a "$src_r5s" "artifact/$r5s_file"
+            r5s_sha256=$(sha256sum "artifact/$r5s_file" | awk '{print $1}')
+
+            # 若未来需要 NanoPi R5C，取消以下注释即可：
+            # src_r5c=$(ls openwrt/bin/targets/rockchip/armv8/*-r5c-squashfs-sysupgrade.img.gz 2>/dev/null | head -n1 || true)
+            # if [ -n "$src_r5c" ] && [ -f "$src_r5c" ]; then
+            #   r5c_file="immortalwrt-${tag_name}-${date_tag}-nanopi-r5c-squashfs-sysupgrade.img.gz"
+            #   cp -a "$src_r5c" "artifact/$r5c_file"
+            #   r5c_sha256=$(sha256sum "artifact/$r5c_file" | awk '{print $1}')
+            # fi
+
+            # 若未来需要 ext4 格式，取消以下注释即可：
+            # src_r5s_ext4=$(ls openwrt/bin/targets/rockchip/armv8/*-r5s-ext4-sysupgrade.img.gz 2>/dev/null | head -n1 || true)
+            # [ -n "$src_r5s_ext4" ] && [ -f "$src_r5s_ext4" ] && cp -a "$src_r5s_ext4" "artifact/immortalwrt-${tag_name}-${date_tag}-nanopi-r5s-ext4-sysupgrade.img.gz"
+
             cp -a openwrt/bin/targets/rockchip/armv8/*.manifest artifact/nanopi-r5s.manifest
             cp -a openwrt/bin/targets/rockchip/armv8/config.buildinfo artifact/nanopi-r5s.config.buildinfo
-            r5s_file=$(basename $(ls artifact/*-r5s-squashfs-sysupgrade.img.gz | head -n1))
-            r5s_sha256=$(sha256sum "artifact/$r5s_file" | awk '{print $1}')
-            r5c_file=$(basename $(ls artifact/*-r5c-squashfs-sysupgrade.img.gz | head -n1))
-            r5c_sha256=$(sha256sum "artifact/$r5c_file" | awk '{print $1}')
             jq -n \
-              --arg ver "${{ needs.check-upstream.outputs.target_tag }}" \
+              --arg ver "${tag_name}" \
               --arg bd "${{ needs.check-upstream.outputs.build_date }}" \
               --arg r5s_sha "$r5s_sha256" \
               --arg r5s_url "https://gh-proxy.com/https://github.com/${{ github.repository }}/releases/latest/download/$r5s_file" \
-              --arg r5c_sha "$r5c_sha256" \
-              --arg r5c_url "https://gh-proxy.com/https://github.com/${{ github.repository }}/releases/latest/download/$r5c_file" \
-              '{"friendlyarm,nanopi-r5s": [{"version": $ver, "build_date": $bd, "sha256sum": $r5s_sha, "url": $r5s_url}], "friendlyarm,nanopi-r5c": [{"version": $ver, "build_date": $bd, "sha256sum": $r5c_sha, "url": $r5c_url}]}' > artifact/ota_nanopi-r5s.json
+              '{"friendlyarm,nanopi-r5s": [{"version": $ver, "build_date": $bd, "sha256sum": $r5s_sha, "url": $r5s_url}]}' > artifact/ota_nanopi-r5s.json
           fi
           cd artifact && sha256sum *.img.gz > sha256sums_${{ matrix.model }}.txt
 
@@ -262,7 +283,7 @@ jobs:
           body: |
             ### 固件信息
             - **上游版本**：ImmortalWrt `${{ needs.check-upstream.outputs.target_tag }}`
-            - **支持设备**：`x86_64` & `FriendlyARM NanoPi R5S / R5C`
+            - **支持设备**：`x86_64` & `FriendlyARM NanoPi R5S`
             - **默认后台**：`http://192.168.100.1`（用户 `root`，默认无密码）
             - **系统分区**：`2048MB (2GB)`，支持 `SquashFS` 固件重置与在线 OTA 升级
             - **自动挂载**：首次开机自动将剩余磁盘空间新建第 3 分区 (`DOCKER_DATA`) 挂载至 `/opt`，OTA 升级后自动无损找回
