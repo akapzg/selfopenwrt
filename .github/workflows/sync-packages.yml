@@ -77,6 +77,42 @@ jobs:
             echo "  [Skip] sbwml/openwrt_pkgs unreachable/deleted. Keeping existing local packages."
           fi
 
+      - name: Apply Post-Sync Security & Compatibility Hardening Patches
+        run: |
+          echo ">>> Running Post-Sync Hardening Hooks..."
+
+          # 1. 自动加固 luci-app-ota: 修复 sbwml alias 语法在非交互 bash 下执行失败的问题，并支持 302 重定向
+          if [ -f packages/luci-app-ota/root/usr/bin/ota ]; then
+            sed -i '/alias board_name/d' packages/luci-app-ota/root/usr/bin/ota
+            if ! grep -q "board_name()" packages/luci-app-ota/root/usr/bin/ota; then
+              sed -i '/\[ -z "\$BUILD_DATE" \] && BUILD_DATE=0/a\\n# Override board_name on non-DTS architectures (x86_64 and armsr/armv8)\nif [ "$(uname -m)" = "x86_64" ]; then\n    board_name() { echo "x86_64"; }\nelif [ "$OPENWRT_BOARD" = "armsr/armv8" ]; then\n    board_name() { echo "armsr,armv8"; }\nfi' packages/luci-app-ota/root/usr/bin/ota
+            fi
+            sed -i 's/curl -I -o \/dev\/null -s -w/curl -L -s -o \/dev\/null -w/g' packages/luci-app-ota/root/usr/bin/ota
+            sed -i 's/curl -s "\$API"/curl -L -s "\$API"/g' packages/luci-app-ota/root/usr/bin/ota
+            echo "  [OK] Patched luci-app-ota (robust board_name function & curl -L redirect support)"
+          fi
+
+          # 2. 自动加固 luci-app-tailscale: 强制 --netfilter-mode=off，禁止脚本动态污染 fw4 防火墙
+          if [ -f packages/luci-app-tailscale/root/etc/init.d/tailscale ]; then
+            sed -i 's/procd_set_param command \$PROGD$/procd_set_param command \$PROGD --netfilter-mode=off/g' packages/luci-app-tailscale/root/etc/init.d/tailscale
+            sed -i '/Remove network settings/,/\/etc\/init\.d\/firewall reload/d' packages/luci-app-tailscale/root/etc/init.d/tailscale
+            echo "  [OK] Patched luci-app-tailscale init script (--netfilter-mode=off)"
+          fi
+          if [ -f packages/luci-app-tailscale/root/usr/sbin/tailscale_helper ]; then
+            sed -i '/# Configure network interface for Tailscale/,$d' packages/luci-app-tailscale/root/usr/sbin/tailscale_helper
+            cat >> packages/luci-app-tailscale/root/usr/sbin/tailscale_helper <<'EOF'
+[ -n "$(uci changes dhcp)" ] && uci commit dhcp && /etc/init.d/dnsmasq reload
+exit 0
+EOF
+            echo "  [OK] Patched luci-app-tailscale tailscale_helper (fw4 protection)"
+          fi
+
+          # 3. 移除冗余/冲突文件并标准化权限
+          rm -rf packages/nikki/mihomo-alpha
+          find packages/ -type f -exec sed -i 's/\r$//' {} +
+          chmod 0755 packages/fastnet/fastnet/files/* packages/luci-app-lan-scanner/root/usr/libexec/* packages/luci-app-usb-writer/root/usr/libexec/* packages/luci-app-ota/root/usr/bin/* 2>/dev/null || true
+          echo ">>> Post-Sync Hardening Complete!"
+
       - name: Commit & Push Updated Packages
         run: |
           git config user.name "github-actions[bot]"
