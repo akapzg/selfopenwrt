@@ -11,21 +11,23 @@
 | **目标设备** | `x86_64`（UEFI / PVE / ESXi，含 2.5G/10G 驱动与 KVM 支持）& `NanoPi R5S / R5C` |
 | **默认后台与网口** | 管理地址：`http://192.168.100.1`（`root` 无密码）；两台设备统一为 **`eth0` = WAN，其余网口全桥接至 LAN** |
 | **分区与自动扩容** | 系统盘固定 `2048MB (2GB)`（支持 `SquashFS` 一键重置）；首次开机自动将磁盘剩余空间建第 3 分区 (`DOCKER_DATA`) 挂载至 `/opt`，OTA 升级后自动无损找回 |
-| **Web 与外观** | `Nginx`（支持 HTTP/3，替换 `uhttpd`，放宽 `ubus`/`uwsgi` 并发与超时）+ `Argon` 主题 + 全局简体中文 (`zh_Hans`) |
+| **Web 与外观** | `Nginx`（支持 HTTP/3，替换 `uhttpd`，放宽 `ubus`/`uwsgi` 并发与超时）+ `Argon` 主题 + 全局简体中文 (`zh_Hans`) + **全新逻辑分类一级导航菜单**（独立 Docker、聚合 VPN、统一网络流控、集中 NAS 存储） |
 | **IPv6 与 DNS 治理** | 切换为 **纯 SLAAC**（解决 NAS/PC 公网 IPv6 后缀漂移）+ **关闭 IPv6 RDNSS 广播**（防双栈 DNS 抢答泄漏与污染） |
 | **Docker 纯净解耦** | 移除 `iptables` 依赖，配置 `iptables='0'` 与 `data_root='/opt/docker/'`；由 `fw4` 统一接管 `172.16.0.0/12` 全局出口 NAT (`src='*'`) 及 `docker <-> lan` / `docker -> wan` 转发，严禁容器穿透防火墙 |
 | **Tailscale 纯净接管** | 强制 `--netfilter-mode=off`，自动预置 `tailscale0` 接口、`tailscale` 防火墙区域（含 `masq` / `mtu_fix`）及 `tailscale <-> lan` 双向互访 + `tailscale -> wan` (Exit Node) 转发 |
 
 ---
 
-## 二、 内置插件列表（共 32 项）
+## 二、 精选内置插件列表与导航菜单分类（共 32 项）
 
-- **代理与分流**：`HomeProxy`、`Nikki (mihomo-meta)`、`MosDNS v5`
-- **组网与内网穿透**：`Tailscale`（含 `luci-app-tailscale`）、`WireGuard`、`DDNS`、`Socat`、`UPnP`
-- **存储、文件与下载**：`Docker / DockerMan`、`DiskMan`、`QuickFile 文件管理`、`OpenList`、`Rclone`、`Samba4`、`qBittorrent`、`Aria2`（含 `AriaNg` 面板）
-- **影音与电视组播**：`AirPlay 2`（含 USB 声卡驱动）、`rtp2httpd`（IPTV 组播转单播）
-- **测速、扫描、监控与流控**：`FastNet 网络体检与测速（内置 HomeBox 内网测速）`、`局域网设备扫描 (LAN Scanner + arp-scan)`、`网速测试`（含 `iPerf3` + `Speedtest`）、`nlbwmon 带宽监控`、`SQM 队列管理`、`EQoS IP 限速`
-- **系统工具与升级**：`OTA 在线升级`、`U盘镜像烧录 (USB Image Writer)`、`TTY 终端`、`CPU 性能调节`、`LED 配置`、`自定义命令`、`网络唤醒 (WoL)`、`Watchcat`、`KMS 服务器`、`释放内存`、`定时重启`、`emmc-install`（R5S 专属刷写 eMMC 命令）
+固件彻底重构了 LuCI 混乱的默认层级，按使用场景统一规范为清晰的一级/二级导航结构：
+
+- **🐳 Docker（独立一级主菜单）**：`Docker 概览`、`容器管理`、`镜像管理`、`网络与卷`（由 `luci-app-dockerman` 提拔至一级）
+- **🛡️ VPN**：`HomeProxy`、`Nikki (mihomo-meta)`、`Tailscale`（集成状态与节点配置）、`WireGuard`
+- **💾 存储 / NAS**：`QuickFile 文件管理`、`Aria2 下载器`、`qBittorrent`、`OpenList 目录列表`、`Samba4 网络共享`、`DiskMan 磁盘管理`
+- **🌐 网络**：`MosDNS v5`、`SQM 队列管理`、`EQoS 智能流控`、`网络测速 (iPerf3 + Speedtest)`、`FastNet 内网测速 (HomeBox)`、`局域网设备扫描 (LAN Scanner)`、`UPnP`、`DDNS`、`Socat`、`nlbwmon 带宽统计`
+- **⚙️ 系统**：`OTA 在线升级`、`U盘镜像烧写 (USB Image Writer)`、`TTYD 终端`、`CPU 性能调节`、`高级定时重启`、`释放内存`、`Watchcat`、`网络唤醒 (WoL)`、`KMS 服务器`、`自定义命令`、`LED 配置`、`emmc-install`（R5S 专属写盘）
+- **🎵 多媒体**：`AirPlay 2 音频接收`、`rtp2httpd IPTV 组播转单播`
 
 ---
 
@@ -37,6 +39,10 @@
    - 手动点击 `Run workflow` 即可拉取最新 `ImmortalWrt v25.12.*` 正式版标签（或指定版本），执行 **源码补丁断言 + `.config` 纯净度断言**，并发编译 `x86_64` 与 `NanoPi R5S` 固件并发布至 GitHub Releases。
 3. **[`UPGRADE_CHECKLIST.md`](UPGRADE_CHECKLIST.md)**（上游更新与编译前检查清单）：
    - 同步插件或升级 ImmortalWrt 版本前对照检查的完整说明与本地 30 秒预检命令。
-4. **[`scripts/diy.sh`](scripts/diy.sh)**：编译前源码定制脚本（含末尾 8 项强制自检断言，防止 `sed` 静默失效）。
-5. **[`files/`](files)**：首次开机固化配置 [`99-custom-settings`](files/etc/uci-defaults/99-custom-settings)、早期自动挂载与 OTA 恢复服务 [`opt-mount`](files/etc/init.d/opt-mount) 及 R5S 写盘工具 [`emmc-install`](files/sbin/emmc-install)。
+4. **[`scripts/diy.sh`](scripts/diy.sh)**：编译前源码定制脚本（含末尾 9 项强制自检断言，防止 `sed` 静默失效）。
+5. **[`files/`](files)**：
+   - 首次开机固化配置 [`99-custom-settings`](files/etc/uci-defaults/99-custom-settings)；
+   - 早期自动扩容挂载与 OTA 恢复服务 [`opt-mount`](files/etc/init.d/opt-mount)；
+   - R5S 闪存刷写工具 [`emmc-install`](files/sbin/emmc-install)；
+   - 声明式标准化菜单布局 [`menu.d/*.json`](files/usr/share/luci/menu.d/)。
 6. **[`configs/`](configs)**：[`x86_64.config`](configs/x86_64.config)、[`nanopi-r5s.config`](configs/nanopi-r5s.config) 与共用插件配置 [`common.config`](configs/common.config)。

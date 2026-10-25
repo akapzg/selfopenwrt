@@ -37,7 +37,7 @@
 ## 二、升级 ImmortalWrt 官方版本时的 5 项检查
 
 ### 情况 A：同分支小版本升级（例如 `v25.12.2` -> `v25.12.3`）
-同分支小版本仅包含内核小版本安全修补（如 `6.12.103` -> `6.12.108`）与 Bug 修复，架构与配置结构不变，通常**无需修改任何代码**，直接点击 [`build.yml`](.github/workflows/build.yml) 的 `Run workflow` 即可，内置的 7 项 `diy.sh` 断言和 `.config` 断言会自动替你完成校验。
+同分支小版本仅包含内核小版本安全修补（如 `6.12.103` -> `6.12.108`）与 Bug 修复，架构与配置结构不变，通常**无需修改任何代码**，直接点击 [`build.yml`](.github/workflows/build.yml) 的 `Run workflow` 即可，内置的 9 项 `diy.sh` 断言和 `.config` 断言会自动替你完成校验。
 
 ### 情况 B：跨大版本升级（例如未来从 `v25.12` 升级到 `v26.xx`）
 跨大版本升级时，请对照检查以下 5 项：
@@ -60,8 +60,8 @@
 
 为了防止上游变动导致“编译成功但刷入后出 Bug”，我们在构建链路中内置了两道强制拦截关卡（任一条件不满足即刻终止编译，绝不产出问题固件）：
 
-1. **[`scripts/diy.sh`](scripts/diy.sh) 末尾的 8 项源码补丁断言（Step `[7/7]`）**：
-   - 强制校验默认 IP `192.168.100.1`、默认终端 `/bin/bash`、`+luci-nginx` 替换、`dockerd` 无 `+iptables`、`sqm-scripts` 无 `+iptables`、`cpufreq` 支持 `x86_64`、Tailscale 包含 `--netfilter-mode=off`、OTA 脚本包含 `curl -L`。
+1. **[`scripts/diy.sh`](scripts/diy.sh) 末尾的 9 项源码补丁断言（Step `[7/7]`）**：
+   - 强制校验默认 IP `192.168.100.1`、默认终端 `/bin/bash`、`+luci-nginx` 替换、`dockerd` 无 `+iptables`、`sqm-scripts` 无 `+iptables`、`cpufreq` 支持 `x86_64`、Tailscale 包含 `--netfilter-mode=off`、OTA 脚本包含 `curl -L`、包管理器 `--allow-untrusted` 支持。
 2. **[`.github/workflows/build.yml`](.github/workflows/build.yml) 的 `Post-Defconfig` 配置表断言**：
    - 在 `make defconfig` 之后强制扫描 `.config`：
      - 若存在任何 `CONFIG_PACKAGE_iptables*=y` 或 `CONFIG_PACKAGE_ip6tables*=y` -> **立即报错终止**；
