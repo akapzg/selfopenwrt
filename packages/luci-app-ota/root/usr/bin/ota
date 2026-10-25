@@ -9,11 +9,12 @@ WRLOCK=/var/lock/ota_background.lock
 
 [ -z "$BUILD_DATE" ] && BUILD_DATE=0
 
-# armsr/armv8
-[ "$OPENWRT_BOARD" = "armsr/armv8" ] && alias board_name="echo armsr,armv8"
-
-# x86_64
-[ $(uname -m) = "x86_64" ] && alias board_name="echo x86_64"
+# Override board_name on non-DTS architectures (x86_64 and armsr/armv8)
+if [ "$(uname -m)" = "x86_64" ]; then
+    board_name() { echo "x86_64"; }
+elif [ "$OPENWRT_BOARD" = "armsr/armv8" ]; then
+    board_name() { echo "armsr,armv8"; }
+fi
 
 action=${1}
 shift
