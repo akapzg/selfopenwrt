@@ -100,10 +100,7 @@ jobs:
           fi
           if [ -f packages/luci-app-tailscale/root/usr/sbin/tailscale_helper ]; then
             sed -i '/# Configure network interface for Tailscale/,$d' packages/luci-app-tailscale/root/usr/sbin/tailscale_helper
-            cat >> packages/luci-app-tailscale/root/usr/sbin/tailscale_helper <<'EOF'
-[ -n "$(uci changes dhcp)" ] && uci commit dhcp && /etc/init.d/dnsmasq reload
-exit 0
-EOF
+            printf '[ -n "$(uci changes dhcp)" ] && uci commit dhcp && /etc/init.d/dnsmasq reload\nexit 0\n' >> packages/luci-app-tailscale/root/usr/sbin/tailscale_helper
             echo "  [OK] Patched luci-app-tailscale tailscale_helper (fw4 protection)"
           fi
 
