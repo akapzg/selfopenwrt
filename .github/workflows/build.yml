@@ -108,12 +108,36 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
+      - name: Cache Package Downloads (dl)
+        uses: actions/cache@v4
+        with:
+          path: openwrt/dl
+          key: ${{ runner.os }}-openwrt-dl-${{ hashFiles('openwrt/feeds.conf.default', 'builder-repo/configs/**') }}
+          restore-keys: |
+            ${{ runner.os }}-openwrt-dl-
+
+      - name: Cache Compiler ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ${{ runner.os }}-ccache-${{ matrix.model }}-${{ needs.check-upstream.outputs.target_tag }}-${{ hashFiles('builder-repo/configs/**', 'builder-repo/scripts/**') }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-${{ matrix.model }}-${{ needs.check-upstream.outputs.target_tag }}-
+            ${{ runner.os }}-ccache-${{ matrix.model }}-
+
       - name: Run DIY Customization & Generate .config
         run: |
           cd openwrt
           bash "$GITHUB_WORKSPACE/builder-repo/scripts/diy.sh" "${{ github.repository }}"
 
-          cat "$GITHUB_WORKSPACE/builder-repo/configs/${{ matrix.model }}.config" > .config
+          # 开启 ccache 编译加速并配置最大缓存 4GB
+          mkdir -p "$HOME/.ccache"
+          ccache -M 4G
+          echo "CONFIG_DEVEL=y" >> .config
+          echo "CONFIG_CCACHE=y" >> .config
+          echo "CONFIG_CCACHE_DIR=\"$HOME/.ccache\"" >> .config
+
+          cat "$GITHUB_WORKSPACE/builder-repo/configs/${{ matrix.model }}.config" >> .config
           cat "$GITHUB_WORKSPACE/builder-repo/configs/common.config" >> .config
           make defconfig
 
@@ -162,6 +186,7 @@ jobs:
         run: |
           cd openwrt
           make -j$(($(nproc) + 1)) || make -j1 V=s
+          ccache -s 2>/dev/null || true
 
       - name: Collect Firmware Artifacts & Generate OTA Metadata
         run: |

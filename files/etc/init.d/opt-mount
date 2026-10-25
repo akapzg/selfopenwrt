@@ -85,9 +85,12 @@ start() {
 
         # Require > 1 GiB (2097152 sectors of 512B) of unallocated space after partition 2
         if [ "$free_sectors" -gt 2097152 ]; then
-            if command -v sgdisk >/dev/null 2>&1; then
+            local pttype=$(blkid -s PTTYPE -o value "$disk_dev" 2>/dev/null || parted -s "$disk_dev" print 2>/dev/null | awk '/Partition Table:/ {print $3}')
+            if [ "$pttype" = "gpt" ] && command -v sgdisk >/dev/null 2>&1; then
                 sgdisk -e "$disk_dev" >/dev/null 2>&1 || true
                 sgdisk -n 3:0:0 -t 3:8300 -c 3:DOCKER_DATA "$disk_dev" >/dev/null 2>&1 || true
+            elif command -v parted >/dev/null 2>&1; then
+                parted -s "$disk_dev" unit s mkpart primary ext4 "${p2_end}s" 100% >/dev/null 2>&1 || true
             fi
             partprobe "$disk_dev" >/dev/null 2>&1 || true
             sleep 1
